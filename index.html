@@ -6,6 +6,7 @@
   <title>MAGI — Sistem Pemesanan Makanan Modern</title>
   <meta name="description" content="MAGI adalah sistem pemesanan makanan modern untuk pelanggan dan pegawai. Pesan makanan dengan mudah melalui smartphone atau kelola pesanan dari dashboard." />
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -197,6 +198,19 @@
     .status-waiting { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
     .status-ready { background: rgba(52, 211, 153, 0.15); color: #34d399; }
     .status-done { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+    .status-cancelled { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+    /* Loading spinner */
+    .spinner {
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: #748ffc;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
@@ -206,136 +220,109 @@
   <script>
     // ============================================================
     // MAGI — Sistem Pemesanan Makanan Modern
-    // Single Page Application - Frontend Prototype
+    // Single Page Application with Supabase Backend
     //
-    // NOTE: GitHub Pages hanya hosting statis.
-    // Data pesanan dari HP pelanggan TIDAK akan otomatis
-    // tersinkron ke laptop pegawai tanpa backend/database.
-    // Untuk sinkronisasi lintas perangkat, diperlukan:
-    // - Supabase
-    // - Firebase
-    // - atau API backend sendiri
+    // Frontend: GitHub Pages (static hosting)
+    // Backend: Supabase Free Plan (PostgreSQL + Auth + Realtime)
+    //
+    // Data pesanan tersinkron secara realtime antar perangkat
+    // melalui Supabase Realtime subscriptions.
     // ============================================================
 
     // ============================================================
-    // 1. DUMMY DATA
+    // 1. SUPABASE CLIENT CONFIGURATION
+    // ============================================================
+    //
+    // CATATAN KEAMANAN:
+    // - anon key boleh diekspos di frontend karena RLS policy yang
+    //   mengontrol akses data.
+    // - anon key = public key, bukan secret key.
+    // - Jangan pernah meletakkan service_role key di frontend.
     // ============================================================
 
-    const TABLES_DATA = [
-      { id: 1, number: 1, capacity: 2, status: 'Tersedia' },
-      { id: 2, number: 2, capacity: 2, status: 'Tersedia' },
-      { id: 3, number: 3, capacity: 4, status: 'Tersedia' },
-      { id: 4, number: 4, capacity: 4, status: 'Tersedia' },
-      { id: 5, number: 5, capacity: 4, status: 'Tersedia' },
-      { id: 6, number: 6, capacity: 6, status: 'Tersedia' },
-      { id: 7, number: 7, capacity: 6, status: 'Tersedia' },
-      { id: 8, number: 8, capacity: 8, status: 'Tersedia' },
-      { id: 9, number: 9, capacity: 8, status: 'Tersedia' },
-      { id: 10, number: 10, capacity: 10, status: 'Tersedia' },
-    ];
+    const SUPABASE_URL = "https://nhaekdnvliytsvayfeqn.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oYWVrZG52bGl5dHN2YXlmZXFuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NTU2NjYsImV4cCI6MjA5NjAzMTY2Nn0.fuUcC0OsdfGj3AYdwzEvADDK_7q7jRHmTZChrNDA4cc";
 
-    const MENU_DATA = [
-      {
-        id: 1,
-        name: 'Nasi Goreng Spesial',
-        category: 'Makanan',
-        description: 'Nasi goreng dengan telur, ayam, dan sayuran segar pilihan chef.',
-        price: 35000,
-        image: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=400&h=300&fit=crop'
-      },
-      {
-        id: 2,
-        name: 'Ayam Geprek Sambal Matah',
-        category: 'Makanan',
-        description: 'Ayam goreng tepung crispy dengan sambal matah khas Bali yang segar.',
-        price: 32000,
-        image: 'https://images.unsplash.com/photo-1632778149955-e80f8ceca2e8?w=400&h=300&fit=crop'
-      },
-      {
-        id: 3,
-        name: 'Mie Goreng Seafood',
-        category: 'Makanan',
-        description: 'Mie goreng dengan udang, cumi, dan sayuran dalam bumbu special.',
-        price: 38000,
-        image: 'https://images.unsplash.com/photo-1585032226651-759b368d7246?w=400&h=300&fit=crop'
-      },
-      {
-        id: 4,
-        name: 'Es Teh Manis',
-        category: 'Minuman',
-        description: 'Teh manis dingin klasik yang menyegarkan dengan es batu.',
-        price: 8000,
-        image: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&h=300&fit=crop'
-      },
-      {
-        id: 5,
-        name: 'Jus Mangga Segar',
-        category: 'Minuman',
-        description: 'Jus mangga asli tanpa tambahan air dan gula berlebih.',
-        price: 18000,
-        image: 'https://images.unsplash.com/photo-1546173159-315724a31696?w=400&h=300&fit=crop'
-      },
-      {
-        id: 6,
-        name: 'Kopi Susu Aren',
-        category: 'Minuman',
-        description: 'Espresso shot dengan susu segar dan gula aren asli pilihan.',
-        price: 22000,
-        image: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=400&h=300&fit=crop'
-      },
-      {
-        id: 7,
-        name: 'Pancake Coklat',
-        category: 'Dessert',
-        description: 'Pancake fluffy berlapis saus coklat premium dan whipped cream.',
-        price: 28000,
-        image: 'https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=400&h=300&fit=crop'
-      },
-      {
-        id: 8,
-        name: 'Es Krim Tiga Rasa',
-        category: 'Dessert',
-        description: 'Tiga scoop es krim: vanilla, coklat, dan strawberry premium.',
-        price: 25000,
-        image: 'https://images.unsplash.com/photo-1497034825429-c343d7c6a68f?w=400&h=300&fit=crop'
-      },
-    ];
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     // ============================================================
-    // 2. GLOBAL STATE
+    // 2. CONSTANTS & LABEL MAPPINGS
     // ============================================================
 
     const APP_URL = 'https://newt-e.github.io/Magi-App/';
 
+    // Database status values (snake_case) → Display labels
+    const STATUS_LABELS = {
+      menunggu_dimasak: 'Menunggu Dimasak',
+      siap_diantar: 'Siap Diantar',
+      selesai: 'Selesai',
+      dibatalkan: 'Dibatalkan',
+    };
+
+    // Database payment method values → Display labels
+    const PAYMENT_LABELS = {
+      qris: 'QRIS',
+      tunai: 'Tunai',
+      kartu_debit: 'Kartu Debit',
+    };
+
+    // Database payment status values → Display labels
+    const PAYMENT_STATUS_LABELS = {
+      belum_dibayar: 'Belum Dibayar',
+      dummy_paid: 'Lunas (Demo)',
+      paid: 'Lunas',
+      failed: 'Gagal',
+    };
+
+    // Frontend payment method IDs → Database values
+    const PAYMENT_METHOD_MAP = {
+      qris: 'qris',
+      cash: 'tunai',
+      debit: 'kartu_debit',
+    };
+
+    // ============================================================
+    // 3. DATA (loaded from Supabase)
+    // ============================================================
+
+    let tablesData = [];
+    let menuData = [];
+
+    // ============================================================
+    // 4. GLOBAL STATE
+    // ============================================================
+
     let state = {
       currentView: 'access-select',
       selectedAccess: null,       // 'customer' | 'staff'
-      selectedRole: null,         // 'Admin' | 'Dapur' | 'Waiter'
+      selectedRole: null,         // 'admin' | 'dapur' | 'waiter'
       staffName: '',
+      staffSession: null,         // Supabase auth session
       selectedTable: null,        // table number
       cart: [],                   // [{menuItem, quantity}]
       customerNote: '',
-      orders: [],
+      orders: [],                 // orders from Supabase
       selectedPaymentMethod: null,
       splitBillEnabled: false,
       splitParticipants: [],
       splitCount: 2,
       menuFilter: 'Semua',
-      adminSidebarView: 'dashboard', // 'dashboard' | 'tables' | 'orders' | 'qr'
+      adminSidebarView: 'dashboard',
       lastOrderInfo: null,
+      isLoading: false,
+      loginError: '',
     };
 
+    // Active Supabase Realtime channel reference
+    let ordersChannel = null;
+
     // ============================================================
-    // 3. LOCALSTORAGE FUNCTIONS
+    // 5. LOCALSTORAGE FUNCTIONS (only for client-side state)
     // ============================================================
 
-    // Sinkronisasi lintas perangkat membutuhkan backend/database.
-    // localStorage hanya menyimpan data di perangkat yang sama.
-
-    function saveState() {
+    function saveLocalState() {
       try {
         const toSave = {
-          orders: state.orders,
           cart: state.cart,
           selectedTable: state.selectedTable,
           customerNote: state.customerNote,
@@ -346,12 +333,11 @@
       }
     }
 
-    function loadState() {
+    function loadLocalState() {
       try {
         const saved = localStorage.getItem('magi_state');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (parsed.orders) state.orders = parsed.orders;
           if (parsed.cart) state.cart = parsed.cart;
           if (parsed.selectedTable) state.selectedTable = parsed.selectedTable;
           if (parsed.customerNote) state.customerNote = parsed.customerNote;
@@ -362,7 +348,7 @@
     }
 
     // ============================================================
-    // 4. HELPER FUNCTIONS
+    // 6. HELPER FUNCTIONS
     // ============================================================
 
     function formatRupiah(num) {
@@ -391,7 +377,7 @@
       } else {
         state.cart.push({ menuItem, quantity: 1 });
       }
-      saveState();
+      saveLocalState();
       render();
     }
 
@@ -402,7 +388,7 @@
       if (item.quantity <= 0) {
         state.cart = state.cart.filter(c => c.menuItem.id !== menuId);
       }
-      saveState();
+      saveLocalState();
       render();
     }
 
@@ -427,12 +413,307 @@
       window.scrollTo(0, 0);
     }
 
-    function getOrdersByStatus(status) {
-      return state.orders.filter(o => o.orderStatus === status);
+    function getStatusLabel(dbStatus) {
+      return STATUS_LABELS[dbStatus] || dbStatus;
+    }
+
+    function getStatusClass(dbStatus) {
+      if (dbStatus === 'menunggu_dimasak') return 'status-waiting';
+      if (dbStatus === 'siap_diantar') return 'status-ready';
+      if (dbStatus === 'selesai') return 'status-done';
+      if (dbStatus === 'dibatalkan') return 'status-cancelled';
+      return '';
+    }
+
+    function getPaymentLabel(dbMethod) {
+      return PAYMENT_LABELS[dbMethod] || dbMethod;
+    }
+
+    function renderLoadingSpinner(message = 'Memuat...') {
+      return `
+        <div class="flex flex-col items-center justify-center py-20">
+          <div class="spinner mb-4"></div>
+          <p class="text-surface-200 text-sm">${message}</p>
+        </div>
+      `;
     }
 
     // ============================================================
-    // 5. RENDER FUNCTIONS
+    // 7. SUPABASE INTEGRATION FUNCTIONS
+    // ============================================================
+
+    // --- 7.1 Fetch Tables ---
+    async function fetchTables() {
+      const { data, error } = await supabaseClient
+        .from('restaurant_tables')
+        .select('*')
+        .order('table_number', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching tables:', error);
+        showToast('Gagal memuat data meja.', 'error');
+        return [];
+      }
+      return data || [];
+    }
+
+    // --- 7.2 Fetch Menu Items ---
+    async function fetchMenuItems() {
+      const { data, error } = await supabaseClient
+        .from('menu_items')
+        .select('*')
+        .eq('is_available', true)
+        .order('category', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching menu:', error);
+        showToast('Gagal memuat data menu.', 'error');
+        return [];
+      }
+      return data || [];
+    }
+
+    // --- 7.3 Create Order ---
+    async function createOrder(orderData, cartItems) {
+      // Insert order
+      const { data: order, error: orderError } = await supabaseClient
+        .from('orders')
+        .insert({
+          order_code: orderData.orderCode,
+          table_number: orderData.tableNumber,
+          customer_note: orderData.customerNote || null,
+          total_price: orderData.totalPrice,
+          payment_method: orderData.paymentMethod,
+          payment_status: 'dummy_paid',
+          order_status: 'menunggu_dimasak',
+        })
+        .select()
+        .single();
+
+      if (orderError) {
+        console.error('Error creating order:', orderError);
+        showToast('Gagal membuat pesanan. Silakan coba lagi.', 'error');
+        return null;
+      }
+
+      // Insert order items
+      const orderItems = cartItems.map(item => ({
+        order_id: order.id,
+        menu_item_id: item.menuItem.id,
+        menu_name: item.menuItem.name,
+        quantity: item.quantity,
+        price: item.menuItem.price,
+        subtotal: item.menuItem.price * item.quantity,
+      }));
+
+      const { error: itemsError } = await supabaseClient
+        .from('order_items')
+        .insert(orderItems);
+
+      if (itemsError) {
+        console.error('Error creating order items:', itemsError);
+        showToast('Pesanan dibuat tetapi detail item gagal disimpan.', 'error');
+      }
+
+      return order;
+    }
+
+    // --- 7.4 Fetch Kitchen Orders ---
+    async function fetchKitchenOrders() {
+      const { data, error } = await supabaseClient
+        .from('orders')
+        .select('*, order_items(*)')
+        .eq('order_status', 'menunggu_dimasak')
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching kitchen orders:', error);
+        return [];
+      }
+      return data || [];
+    }
+
+    // --- 7.5 Mark Order as Cooked ---
+    async function markOrderAsCooked(orderId) {
+      const { data, error } = await supabaseClient
+        .from('orders')
+        .update({
+          order_status: 'siap_diantar',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId)
+        .eq('order_status', 'menunggu_dimasak')
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error updating order:', error);
+        showToast('Gagal mengupdate status pesanan.', 'error');
+        return null;
+      }
+      return data;
+    }
+
+    // --- 7.6 Fetch Waiter Orders ---
+    async function fetchWaiterOrders() {
+      const { data, error } = await supabaseClient
+        .from('orders')
+        .select('*, order_items(*)')
+        .eq('order_status', 'siap_diantar')
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching waiter orders:', error);
+        return [];
+      }
+      return data || [];
+    }
+
+    // --- 7.7 Mark Order as Completed ---
+    async function markOrderAsCompleted(orderId) {
+      const { data, error } = await supabaseClient
+        .from('orders')
+        .update({
+          order_status: 'selesai',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId)
+        .eq('order_status', 'siap_diantar')
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error updating order:', error);
+        showToast('Gagal mengupdate status pesanan.', 'error');
+        return null;
+      }
+      return data;
+    }
+
+    // --- 7.8 Fetch All Orders (Admin) ---
+    async function fetchAllOrders() {
+      const { data, error } = await supabaseClient
+        .from('orders')
+        .select('*, order_items(*)')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching all orders:', error);
+        return [];
+      }
+      return data || [];
+    }
+
+    // --- 7.9 Staff Login ---
+    async function loginStaff(email, password) {
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        console.error('Login error:', error);
+        return { session: null, role: null, name: null, error: error.message };
+      }
+
+      // Get staff profile (role)
+      const { data: profile, error: profileError } = await supabaseClient
+        .from('staff_profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profileError || !profile) {
+        console.error('Profile error:', profileError);
+        // Logout if no profile found
+        await supabaseClient.auth.signOut();
+        return { session: null, role: null, name: null, error: 'Profil pegawai tidak ditemukan.' };
+      }
+
+      return {
+        session: data.session,
+        role: profile.role,
+        name: profile.name,
+        error: null,
+      };
+    }
+
+    // --- 7.10 Staff Logout ---
+    async function logoutStaff() {
+      // Unsubscribe from realtime
+      if (ordersChannel) {
+        supabaseClient.removeChannel(ordersChannel);
+        ordersChannel = null;
+      }
+
+      const { error } = await supabaseClient.auth.signOut();
+      if (error) {
+        console.error('Logout error:', error);
+      }
+    }
+
+    // --- 7.11 Subscribe to Orders (Realtime) ---
+    function subscribeToOrders(callback) {
+      // Remove existing channel if any
+      if (ordersChannel) {
+        supabaseClient.removeChannel(ordersChannel);
+      }
+
+      ordersChannel = supabaseClient
+        .channel('orders-realtime')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'orders',
+          },
+          (payload) => {
+            console.log('Realtime order change:', payload);
+            if (callback) callback(payload);
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'order_items',
+          },
+          (payload) => {
+            console.log('Realtime order_items change:', payload);
+            if (callback) callback(payload);
+          }
+        )
+        .subscribe((status) => {
+          console.log('Realtime subscription status:', status);
+        });
+    }
+
+    // ============================================================
+    // 8. ASYNC DATA LOADERS
+    // ============================================================
+
+    async function loadTablesData() {
+      tablesData = await fetchTables();
+    }
+
+    async function loadMenuData() {
+      menuData = await fetchMenuItems();
+    }
+
+    async function loadDashboardOrders() {
+      if (state.selectedRole === 'dapur') {
+        state.orders = await fetchKitchenOrders();
+      } else if (state.selectedRole === 'waiter') {
+        state.orders = await fetchWaiterOrders();
+      } else if (state.selectedRole === 'admin') {
+        state.orders = await fetchAllOrders();
+      }
+    }
+
+    // ============================================================
+    // 9. RENDER FUNCTIONS
     // ============================================================
 
     function render() {
@@ -507,7 +788,7 @@
               </button>
             </div>
 
-            <p class="text-xs text-surface-200/50 mt-12 animate-fade-in" style="animation-delay: 0.6s">© 2026 MAGI — Powered by Modern Technology</p>
+            <p class="text-xs text-surface-200/50 mt-12 animate-fade-in" style="animation-delay: 0.6s">© 2026 MAGI — Powered by Supabase</p>
           </div>
         </div>
       `;
@@ -515,20 +796,36 @@
 
     // ----- TABLE SELECT -----
     function renderTableSelect() {
-      const tableCards = TABLES_DATA.map(t => {
-        const isSelected = state.selectedTable === t.number;
+      if (tablesData.length === 0) {
+        return `
+          <div class="min-h-screen max-w-2xl mx-auto p-4 animate-fade-in">
+            <div class="flex items-center gap-3 mb-6">
+              <button id="btn-back-access" class="w-10 h-10 rounded-xl glass flex items-center justify-center hover:bg-white/10 transition-colors">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+              </button>
+              <h1 class="text-2xl font-bold text-white">Pilih Meja</h1>
+            </div>
+            ${renderLoadingSpinner('Memuat data meja...')}
+          </div>
+        `;
+      }
+
+      const tableCards = tablesData.map(t => {
+        const isSelected = state.selectedTable === t.table_number;
         const selectedClass = isSelected
           ? 'border-magi-400 bg-magi-600/20 ring-2 ring-magi-400/50 shadow-lg shadow-magi-500/20'
           : 'border-white/10 hover:border-magi-400/30 hover:bg-white/5';
+        const statusLabel = t.status === 'tersedia' ? 'Tersedia' : t.status === 'digunakan' ? 'Digunakan' : 'Reserved';
+        const statusColor = t.status === 'tersedia' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400';
         return `
-          <button class="table-select-btn glass rounded-2xl p-4 text-center transition-all duration-300 cursor-pointer border ${selectedClass}" data-table="${t.number}">
-            <div class="text-3xl font-black text-white mb-1">${t.number}</div>
+          <button class="table-select-btn glass rounded-2xl p-4 text-center transition-all duration-300 cursor-pointer border ${selectedClass}" data-table="${t.table_number}">
+            <div class="text-3xl font-black text-white mb-1">${t.table_number}</div>
             <div class="text-xs text-surface-200 mb-2">
               <svg class="w-3.5 h-3.5 inline mr-1 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
               ${t.capacity} orang
             </div>
-            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${t.status === 'Tersedia' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}">
-              ${t.status}
+            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}">
+              ${statusLabel}
             </span>
             ${isSelected ? '<div class="mt-2"><svg class="w-5 h-5 text-magi-400 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></div>' : ''}
           </button>
@@ -572,27 +869,38 @@
 
     // ----- CUSTOMER MENU -----
     function renderCustomerMenu() {
-      const categories = ['Semua', 'Makanan', 'Minuman', 'Dessert'];
+      if (menuData.length === 0) {
+        return `
+          <div class="min-h-screen max-w-2xl mx-auto p-4 animate-fade-in">
+            ${renderLoadingSpinner('Memuat menu...')}
+          </div>
+        `;
+      }
+
+      const categories = ['Semua', 'makanan', 'minuman', 'dessert'];
+      const catLabels = { 'Semua': 'Semua', 'makanan': 'Makanan', 'minuman': 'Minuman', 'dessert': 'Dessert' };
       const filtered = state.menuFilter === 'Semua'
-        ? MENU_DATA
-        : MENU_DATA.filter(m => m.category === state.menuFilter);
+        ? menuData
+        : menuData.filter(m => m.category === state.menuFilter);
 
       const catTabs = categories.map(c => {
         const active = state.menuFilter === c;
-        return `<button class="menu-cat-btn whitespace-nowrap px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${active ? 'bg-magi-500 text-white shadow-md shadow-magi-500/30' : 'bg-white/5 text-surface-200 hover:bg-white/10'}" data-cat="${c}">${c}</button>`;
+        return `<button class="menu-cat-btn whitespace-nowrap px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${active ? 'bg-magi-500 text-white shadow-md shadow-magi-500/30' : 'bg-white/5 text-surface-200 hover:bg-white/10'}" data-cat="${c}">${catLabels[c]}</button>`;
       }).join('');
 
       const menuCards = filtered.map(m => {
         const inCart = state.cart.find(c => c.menuItem.id === m.id);
+        const catLabel = catLabels[m.category] || m.category;
+        const catColor = m.category === 'makanan' ? 'bg-orange-500/80' : m.category === 'minuman' ? 'bg-blue-500/80' : 'bg-pink-500/80';
         return `
           <div class="glass rounded-2xl overflow-hidden border border-white/5 hover:border-magi-400/20 transition-all duration-300 animate-slide-up">
             <div class="relative">
-              <img src="${m.image}" alt="${m.name}" class="w-full h-40 object-cover" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22><rect fill=%22%231e293b%22 width=%22400%22 height=%22300%22/><text fill=%22%23475569%22 font-size=%2216%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22>${m.name}</text></svg>'"/>
-              <span class="absolute top-2 left-2 px-2 py-0.5 rounded-full text-xs font-semibold ${m.category === 'Makanan' ? 'bg-orange-500/80' : m.category === 'Minuman' ? 'bg-blue-500/80' : 'bg-pink-500/80'} text-white backdrop-blur-sm">${m.category}</span>
+              <img src="${m.image_url || ''}" alt="${m.name}" class="w-full h-40 object-cover" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22><rect fill=%22%231e293b%22 width=%22400%22 height=%22300%22/><text fill=%22%23475569%22 font-size=%2216%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22>${m.name}</text></svg>'"/>
+              <span class="absolute top-2 left-2 px-2 py-0.5 rounded-full text-xs font-semibold ${catColor} text-white backdrop-blur-sm">${catLabel}</span>
             </div>
             <div class="p-4">
               <h3 class="font-bold text-white text-base mb-1">${m.name}</h3>
-              <p class="text-xs text-surface-200 mb-3 line-clamp-2 leading-relaxed">${m.description}</p>
+              <p class="text-xs text-surface-200 mb-3 line-clamp-2 leading-relaxed">${m.description || ''}</p>
               <div class="flex items-center justify-between">
                 <p class="font-bold text-accent-light text-lg">${formatRupiah(m.price)}</p>
                 ${inCart ? `
@@ -689,7 +997,7 @@
 
       const cartItems = state.cart.map(item => `
         <div class="glass rounded-xl p-4 flex gap-4 border border-white/5 animate-slide-up">
-          <img src="${item.menuItem.image}" alt="${item.menuItem.name}" class="w-20 h-20 rounded-xl object-cover flex-shrink-0" loading="lazy" onerror="this.style.background='#1e293b'"/>
+          <img src="${item.menuItem.image_url || item.menuItem.image || ''}" alt="${item.menuItem.name}" class="w-20 h-20 rounded-xl object-cover flex-shrink-0" loading="lazy" onerror="this.style.background='#1e293b'"/>
           <div class="flex-1 min-w-0">
             <h3 class="font-bold text-white text-sm mb-0.5 truncate">${item.menuItem.name}</h3>
             <p class="text-xs text-surface-200 mb-2">${formatRupiah(item.menuItem.price)}</p>
@@ -908,33 +1216,32 @@
 
           <!-- Pay Button -->
           <div class="fixed bottom-0 left-0 right-0 z-40 p-4 max-w-2xl mx-auto glass border-t border-white/5">
-            <button id="btn-pay-now" class="w-full py-4 rounded-2xl bg-gradient-to-r from-accent-dark via-accent to-accent-light text-surface-900 font-black text-base shadow-2xl shadow-accent/30 hover:shadow-accent/50 transition-all">
-              💳 Bayar & Pesan Sekarang — ${formatRupiah(cartTotal)}
+            <button id="btn-pay-now" class="w-full py-4 rounded-2xl bg-gradient-to-r from-accent-dark via-accent to-accent-light text-surface-900 font-black text-base shadow-2xl shadow-accent/30 hover:shadow-accent/50 transition-all ${state.isLoading ? 'opacity-60 pointer-events-none' : ''}">
+              ${state.isLoading ? '⏳ Memproses...' : `💳 Bayar & Pesan Sekarang — ${formatRupiah(cartTotal)}`}
             </button>
           </div>
-        </div>
 
-        <!-- Modal: Split QR -->
-        <div id="modal-split-qr" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay">
-          <div class="glass rounded-2xl p-6 max-w-sm w-full text-center border border-white/10 animate-scale-in">
-            <h3 class="text-lg font-bold text-white mb-2">QR Split Bill</h3>
-            <p class="text-xs text-surface-200 mb-4">QR ini adalah simulasi untuk mengundang teman bergabung ke Split Bill.</p>
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(APP_URL)}" alt="QR Split Bill" class="mx-auto rounded-xl mb-4 w-48 h-48" />
-            <p class="text-xs text-surface-200 mb-4 break-all">${APP_URL}</p>
-            <button id="btn-close-split-qr" class="w-full py-3 rounded-xl bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors">Tutup</button>
-          </div>
-        </div>
-
-        <!-- Modal: Scan Friend QR -->
-        <div id="modal-scan-friend" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay">
-          <div class="glass rounded-2xl p-6 max-w-sm w-full text-center border border-white/10 animate-scale-in">
-            <div class="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-4">
-              <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+          <!-- Modal: Split QR -->
+          <div id="modal-split-qr" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay">
+            <div class="glass rounded-2xl p-6 max-w-sm w-full text-center border border-white/10 animate-scale-in">
+              <h3 class="text-lg font-bold text-white mb-2">QR Split Bill</h3>
+              <p class="text-xs text-surface-200 mb-4">QR ini adalah simulasi untuk mengundang teman bergabung ke Split Bill.</p>
+              <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(APP_URL)}" alt="QR Split Bill" class="mx-auto rounded-xl mb-4 w-48 h-48" />
+              <p class="text-xs text-surface-200 mb-4 break-all">${APP_URL}</p>
+              <button id="btn-close-split-qr" class="w-full py-3 rounded-xl bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors">Tutup</button>
             </div>
-            <h3 class="text-lg font-bold text-white mb-2">Berhasil!</h3>
-            <p class="text-sm text-surface-200 mb-4">Berhasil bergabung ke Split Bill.</p>
-            <!-- TODO: Integrasi kamera dapat ditambahkan nanti menggunakan WebRTC atau library QR scanner seperti html5-qrcode -->
-            <button id="btn-close-scan-friend" class="w-full py-3 rounded-xl bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors">Tutup</button>
+          </div>
+
+          <!-- Modal: Scan Friend QR -->
+          <div id="modal-scan-friend" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay">
+            <div class="glass rounded-2xl p-6 max-w-sm w-full text-center border border-white/10 animate-scale-in">
+              <div class="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              </div>
+              <h3 class="text-lg font-bold text-white mb-2">Berhasil!</h3>
+              <p class="text-sm text-surface-200 mb-4">Berhasil bergabung ke Split Bill.</p>
+              <button id="btn-close-scan-friend" class="w-full py-3 rounded-xl bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors">Tutup</button>
+            </div>
           </div>
         </div>
       `;
@@ -944,7 +1251,6 @@
     function renderCustomerSuccess() {
       const info = state.lastOrderInfo;
       if (!info) { navigate('access-select'); return ''; }
-      const paymentLabels = { qris: 'QRIS', cash: 'Tunai di Kasir', debit: 'Kartu Debit' };
       return `
         <div class="min-h-screen flex items-center justify-center p-4 animate-fade-in">
           <div class="max-w-md w-full text-center">
@@ -959,15 +1265,15 @@
             <div class="glass rounded-2xl p-5 text-left mb-6 border border-white/5">
               <div class="grid grid-cols-2 gap-y-3 text-sm">
                 <span class="text-surface-200">Nomor Pesanan</span>
-                <span class="text-white font-bold text-right">${info.orderCode}</span>
+                <span class="text-white font-bold text-right">${info.order_code || info.orderCode}</span>
                 <span class="text-surface-200">Meja</span>
-                <span class="text-white font-bold text-right">${info.tableNumber}</span>
+                <span class="text-white font-bold text-right">${info.table_number || info.tableNumber}</span>
                 <span class="text-surface-200">Total Bayar</span>
-                <span class="text-accent-light font-black text-right">${formatRupiah(info.totalPrice)}</span>
+                <span class="text-accent-light font-black text-right">${formatRupiah(info.total_price || info.totalPrice)}</span>
                 <span class="text-surface-200">Pembayaran</span>
-                <span class="text-white font-bold text-right">${paymentLabels[info.paymentMethod] || info.paymentMethod}</span>
+                <span class="text-white font-bold text-right">${getPaymentLabel(info.payment_method || info.paymentMethod)}</span>
                 <span class="text-surface-200">Status</span>
-                <span class="text-right"><span class="px-2 py-0.5 rounded-full text-xs font-semibold status-waiting">${info.orderStatus}</span></span>
+                <span class="text-right"><span class="px-2 py-0.5 rounded-full text-xs font-semibold status-waiting">${getStatusLabel(info.order_status || 'menunggu_dimasak')}</span></span>
               </div>
             </div>
 
@@ -989,36 +1295,38 @@
                 <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
               </div>
               <h1 class="text-2xl font-black gradient-text mb-1">MAGI Staff Portal</h1>
-              <p class="text-sm text-surface-200">Masuk untuk mengelola operasional restoran.</p>
+              <p class="text-sm text-surface-200">Masuk dengan akun pegawai Supabase.</p>
             </div>
 
             <div class="glass rounded-2xl p-6 border border-white/5">
               <div class="mb-4">
-                <label class="text-sm font-semibold text-white mb-2 block">Nama Pegawai</label>
-                <input id="input-staff-name" type="text" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-surface-200/40 focus:outline-none focus:border-magi-400/50 transition-colors" placeholder="Masukkan nama Anda..." value="${state.staffName}" />
+                <label class="text-sm font-semibold text-white mb-2 block">Email Pegawai</label>
+                <input id="input-staff-email" type="email" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-surface-200/40 focus:outline-none focus:border-magi-400/50 transition-colors" placeholder="contoh: admin@magi.test" />
               </div>
-              <div class="mb-6">
-                <label class="text-sm font-semibold text-white mb-2 block">Pilih Role</label>
-                <div class="grid grid-cols-3 gap-2">
-                  ${['Admin', 'Dapur', 'Waiter'].map(r => {
-                    const isSelected = state.selectedRole === r;
-                    const icons = {
-                      Admin: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>',
-                      Dapur: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"/>',
-                      Waiter: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>',
-                    };
-                    return `
-                      <button class="role-btn p-3 rounded-xl border transition-all duration-200 cursor-pointer ${isSelected ? 'border-magi-400 bg-magi-600/20 ring-2 ring-magi-400/40' : 'border-white/10 hover:border-magi-400/20 bg-white/5 hover:bg-white/10'}" data-role="${r}">
-                        <svg class="w-6 h-6 mx-auto mb-1 ${isSelected ? 'text-magi-400' : 'text-surface-200'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">${icons[r]}</svg>
-                        <p class="text-xs font-semibold ${isSelected ? 'text-magi-300' : 'text-surface-200'}">${r}</p>
-                      </button>
-                    `;
-                  }).join('')}
+              <div class="mb-4">
+                <label class="text-sm font-semibold text-white mb-2 block">Password</label>
+                <input id="input-staff-password" type="password" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-surface-200/40 focus:outline-none focus:border-magi-400/50 transition-colors" placeholder="Masukkan password..." />
+              </div>
+
+              ${state.loginError ? `
+                <div class="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                  <p class="text-sm text-red-400">${state.loginError}</p>
                 </div>
-              </div>
-              <button id="btn-staff-login" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-magi-500 to-magi-700 text-white font-bold hover:from-magi-400 hover:to-magi-600 transition-all btn-glow shadow-lg shadow-magi-500/20">
-                Masuk →
+              ` : ''}
+
+              <button id="btn-staff-login" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-magi-500 to-magi-700 text-white font-bold hover:from-magi-400 hover:to-magi-600 transition-all btn-glow shadow-lg shadow-magi-500/20 ${state.isLoading ? 'opacity-60 pointer-events-none' : ''}">
+                ${state.isLoading ? '⏳ Memproses...' : 'Masuk →'}
               </button>
+            </div>
+
+            <!-- Demo credentials hint -->
+            <div class="glass rounded-xl p-4 mt-4 border border-white/5">
+              <p class="text-xs font-semibold text-magi-300 mb-2">📋 Akun Demo:</p>
+              <div class="grid grid-cols-1 gap-1 text-xs text-surface-200">
+                <p><span class="text-white font-medium">Admin:</span> admin@magi.test</p>
+                <p><span class="text-white font-medium">Dapur:</span> dapur@magi.test</p>
+                <p><span class="text-white font-medium">Waiter:</span> waiter@magi.test</p>
+              </div>
             </div>
 
             <div class="text-center mt-4">
@@ -1033,17 +1341,18 @@
 
     // ----- STAFF SIDEBAR -----
     function renderStaffSidebar(role) {
+      const roleLabel = role === 'admin' ? 'Admin' : role === 'dapur' ? 'Dapur' : 'Waiter';
       const sidebarLinks = {
-        Admin: [
+        admin: [
           { id: 'dashboard', label: 'Dashboard', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>' },
           { id: 'tables', label: 'Manajemen Meja', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>' },
           { id: 'orders', label: 'Pesanan', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>' },
           { id: 'qr', label: 'Generate QR', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>' },
         ],
-        Dapur: [
+        dapur: [
           { id: 'dashboard', label: 'Pesanan Masuk', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>' },
         ],
-        Waiter: [
+        waiter: [
           { id: 'dashboard', label: 'Pesanan Siap Diantar', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>' },
         ],
       };
@@ -1060,7 +1369,7 @@
           <!-- Brand -->
           <div class="p-5 border-b border-white/5">
             <h2 class="text-xl font-black gradient-text">MAGI Staff</h2>
-            <p class="text-xs text-surface-200 mt-0.5">${role} — ${state.staffName}</p>
+            <p class="text-xs text-surface-200 mt-0.5">${roleLabel} — ${state.staffName}</p>
           </div>
           <!-- Nav -->
           <nav class="flex-1 p-3 flex flex-col gap-1">
@@ -1080,9 +1389,10 @@
     // ----- ADMIN DASHBOARD -----
     function renderAdminDashboard() {
       const totalOrders = state.orders.length;
-      const waitingOrders = getOrdersByStatus('Menunggu Dimasak').length;
-      const readyOrders = getOrdersByStatus('Siap Diantar').length;
-      const doneOrders = getOrdersByStatus('Selesai').length;
+      const waitingOrders = state.orders.filter(o => o.order_status === 'menunggu_dimasak').length;
+      const readyOrders = state.orders.filter(o => o.order_status === 'siap_diantar').length;
+      const doneOrders = state.orders.filter(o => o.order_status === 'selesai').length;
+      const totalRevenue = state.orders.filter(o => o.order_status === 'selesai').reduce((s, o) => s + o.total_price, 0);
 
       let contentHtml = '';
       const v = state.adminSidebarView;
@@ -1098,7 +1408,7 @@
                 </div>
                 <p class="text-xs text-surface-200 font-medium">Total Meja</p>
               </div>
-              <p class="text-3xl font-black text-white">${TABLES_DATA.length}</p>
+              <p class="text-3xl font-black text-white">${tablesData.length}</p>
             </div>
             <div class="glass rounded-2xl p-5 border border-white/5 hover:border-accent/20 transition-colors">
               <div class="flex items-center gap-3 mb-2">
@@ -1123,28 +1433,31 @@
                 <div class="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center">
                   <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                 </div>
-                <p class="text-xs text-surface-200 font-medium">Siap Diantar</p>
+                <p class="text-xs text-surface-200 font-medium">Pendapatan (Selesai)</p>
               </div>
-              <p class="text-3xl font-black text-emerald-400">${readyOrders}</p>
+              <p class="text-2xl font-black text-emerald-400">${formatRupiah(totalRevenue)}</p>
             </div>
           </div>
 
           <!-- Recent orders -->
           <h3 class="text-lg font-bold text-white mb-3">Pesanan Terbaru</h3>
-          ${state.orders.length > 0 ? renderOrdersTable(state.orders.slice(-5).reverse()) : '<div class="glass rounded-xl p-8 text-center border border-white/5"><p class="text-surface-200">Belum ada pesanan.</p></div>'}
+          ${state.orders.length > 0 ? renderOrdersTable(state.orders.slice(0, 10)) : '<div class="glass rounded-xl p-8 text-center border border-white/5"><p class="text-surface-200">Belum ada pesanan.</p></div>'}
         `;
       } else if (v === 'tables') {
-        const tableRows = TABLES_DATA.map(t => `
+        const tableRows = tablesData.map(t => {
+          const statusLabel = t.status === 'tersedia' ? 'Tersedia' : t.status === 'digunakan' ? 'Digunakan' : 'Reserved';
+          const statusColor = t.status === 'tersedia' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400';
+          return `
           <tr class="table-row-hover border-b border-white/5">
-            <td class="px-4 py-3 text-sm font-bold text-white">${t.number}</td>
+            <td class="px-4 py-3 text-sm font-bold text-white">${t.table_number}</td>
             <td class="px-4 py-3 text-sm text-surface-200">${t.capacity} orang</td>
-            <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-xs font-semibold ${t.status === 'Tersedia' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}">${t.status}</span></td>
+            <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor}">${statusLabel}</span></td>
             <td class="px-4 py-3 text-xs text-surface-200 truncate max-w-[200px]">${APP_URL}</td>
             <td class="px-4 py-3">
-              <button class="admin-qr-btn px-3 py-1.5 rounded-lg bg-magi-500/15 text-magi-300 text-xs font-semibold hover:bg-magi-500/25 transition-colors" data-table="${t.number}">QR</button>
+              <button class="admin-qr-btn px-3 py-1.5 rounded-lg bg-magi-500/15 text-magi-300 text-xs font-semibold hover:bg-magi-500/25 transition-colors" data-table="${t.table_number}">QR</button>
             </td>
           </tr>
-        `).join('');
+        `}).join('');
         contentHtml = `
           <h2 class="text-2xl font-black text-white mb-6">Manajemen Meja</h2>
           <div class="glass rounded-2xl border border-white/5 overflow-hidden">
@@ -1167,7 +1480,7 @@
       } else if (v === 'orders') {
         contentHtml = `
           <h2 class="text-2xl font-black text-white mb-6">Daftar Pesanan</h2>
-          ${state.orders.length > 0 ? renderOrdersTable(state.orders.slice().reverse()) : '<div class="glass rounded-xl p-8 text-center border border-white/5"><p class="text-surface-200">Belum ada pesanan.</p></div>'}
+          ${state.orders.length > 0 ? renderOrdersTable(state.orders) : '<div class="glass rounded-xl p-8 text-center border border-white/5"><p class="text-surface-200">Belum ada pesanan.</p></div>'}
         `;
       } else if (v === 'qr') {
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(APP_URL)}`;
@@ -1193,7 +1506,7 @@
       }
 
       return `
-        ${renderStaffSidebar('Admin')}
+        ${renderStaffSidebar('admin')}
         <!-- Mobile sidebar toggle -->
         <button id="btn-toggle-sidebar" class="lg:hidden fixed top-4 left-4 z-40 w-10 h-10 rounded-xl glass flex items-center justify-center hover:bg-white/10 transition-colors">
           <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -1221,18 +1534,18 @@
     }
 
     function renderOrdersTable(orders) {
-      const statusClass = s => s === 'Menunggu Dimasak' ? 'status-waiting' : s === 'Siap Diantar' ? 'status-ready' : 'status-done';
-      const paymentLabels = { qris: 'QRIS', cash: 'Tunai', debit: 'Debit' };
-      const rows = orders.map(o => `
+      const rows = orders.map(o => {
+        const createdAt = new Date(o.created_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' });
+        return `
         <tr class="table-row-hover border-b border-white/5">
-          <td class="px-4 py-3 text-sm font-bold text-magi-300">${o.orderCode}</td>
-          <td class="px-4 py-3 text-sm text-white">Meja ${o.tableNumber}</td>
-          <td class="px-4 py-3 text-sm font-semibold text-accent-light">${formatRupiah(o.totalPrice)}</td>
-          <td class="px-4 py-3 text-sm text-surface-200">${paymentLabels[o.paymentMethod] || o.paymentMethod}</td>
-          <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-xs font-semibold ${statusClass(o.orderStatus)}">${o.orderStatus}</span></td>
-          <td class="px-4 py-3 text-xs text-surface-200">${o.createdAt}</td>
+          <td class="px-4 py-3 text-sm font-bold text-magi-300">${o.order_code}</td>
+          <td class="px-4 py-3 text-sm text-white">Meja ${o.table_number}</td>
+          <td class="px-4 py-3 text-sm font-semibold text-accent-light">${formatRupiah(o.total_price)}</td>
+          <td class="px-4 py-3 text-sm text-surface-200">${getPaymentLabel(o.payment_method)}</td>
+          <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusClass(o.order_status)}">${getStatusLabel(o.order_status)}</span></td>
+          <td class="px-4 py-3 text-xs text-surface-200">${createdAt}</td>
         </tr>
-      `).join('');
+      `}).join('');
       return `
         <div class="glass rounded-2xl border border-white/5 overflow-hidden">
           <div class="overflow-x-auto">
@@ -1256,12 +1569,13 @@
 
     // ----- KITCHEN DASHBOARD -----
     function renderKitchenDashboard() {
-      const waitingOrders = getOrdersByStatus('Menunggu Dimasak');
+      const waitingOrders = state.orders.filter(o => o.order_status === 'menunggu_dimasak');
       const orderCards = waitingOrders.map(o => {
-        const itemsList = o.items.map(it => `
+        const items = o.order_items || [];
+        const itemsList = items.map(it => `
           <div class="flex justify-between text-sm py-1 border-b border-white/5 last:border-0">
-            <span class="text-white">${it.name} <span class="text-surface-200">×${it.quantity}</span></span>
-            <span class="text-surface-200">${formatRupiah(it.price * it.quantity)}</span>
+            <span class="text-white">${it.menu_name} <span class="text-surface-200">×${it.quantity}</span></span>
+            <span class="text-surface-200">${formatRupiah(it.subtotal)}</span>
           </div>
         `).join('');
         return `
@@ -1269,18 +1583,18 @@
             <div class="flex items-center justify-between mb-3">
               <div>
                 <p class="text-xs text-surface-200">Pesanan</p>
-                <p class="text-lg font-black text-magi-300">${o.orderCode}</p>
+                <p class="text-lg font-black text-magi-300">${o.order_code}</p>
               </div>
               <div class="text-right">
                 <p class="text-xs text-surface-200">Meja</p>
-                <p class="text-2xl font-black text-white">${o.tableNumber}</p>
+                <p class="text-2xl font-black text-white">${o.table_number}</p>
               </div>
             </div>
             <div class="mb-3">${itemsList}</div>
-            ${o.customerNote ? `<div class="bg-amber-500/10 rounded-lg p-2 mb-3"><p class="text-xs text-amber-300">📝 ${o.customerNote}</p></div>` : ''}
+            ${o.customer_note ? `<div class="bg-amber-500/10 rounded-lg p-2 mb-3"><p class="text-xs text-amber-300">📝 ${o.customer_note}</p></div>` : ''}
             <div class="flex items-center justify-between mb-4">
-              <span class="px-2 py-0.5 rounded-full text-xs font-semibold status-waiting">${o.orderStatus}</span>
-              <span class="text-base font-bold text-accent-light">${formatRupiah(o.totalPrice)}</span>
+              <span class="px-2 py-0.5 rounded-full text-xs font-semibold status-waiting">${getStatusLabel(o.order_status)}</span>
+              <span class="text-base font-bold text-accent-light">${formatRupiah(o.total_price)}</span>
             </div>
             <button class="kitchen-done-btn w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-bold hover:from-emerald-400 hover:to-emerald-500 transition-all shadow-lg shadow-emerald-500/20" data-order-id="${o.id}">
               ✅ Selesai Dimasak
@@ -1290,7 +1604,7 @@
       }).join('');
 
       return `
-        ${renderStaffSidebar('Dapur')}
+        ${renderStaffSidebar('dapur')}
         <button id="btn-toggle-sidebar" class="lg:hidden fixed top-4 left-4 z-40 w-10 h-10 rounded-xl glass flex items-center justify-center hover:bg-white/10 transition-colors">
           <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
@@ -1320,11 +1634,12 @@
 
     // ----- WAITER DASHBOARD -----
     function renderWaiterDashboard() {
-      const readyOrders = getOrdersByStatus('Siap Diantar');
+      const readyOrders = state.orders.filter(o => o.order_status === 'siap_diantar');
       const orderCards = readyOrders.map(o => {
-        const itemsList = o.items.map(it => `
+        const items = o.order_items || [];
+        const itemsList = items.map(it => `
           <div class="flex justify-between text-sm py-1 border-b border-white/5 last:border-0">
-            <span class="text-white">${it.name} <span class="text-surface-200">×${it.quantity}</span></span>
+            <span class="text-white">${it.menu_name} <span class="text-surface-200">×${it.quantity}</span></span>
           </div>
         `).join('');
         return `
@@ -1332,17 +1647,17 @@
             <div class="flex items-center justify-between mb-3">
               <div>
                 <p class="text-xs text-surface-200">Pesanan</p>
-                <p class="text-lg font-black text-magi-300">${o.orderCode}</p>
+                <p class="text-lg font-black text-magi-300">${o.order_code}</p>
               </div>
               <div class="text-right">
                 <p class="text-xs text-surface-200">Meja</p>
-                <p class="text-2xl font-black text-white">${o.tableNumber}</p>
+                <p class="text-2xl font-black text-white">${o.table_number}</p>
               </div>
             </div>
             <div class="mb-3">${itemsList}</div>
             <div class="flex items-center justify-between mb-4">
-              <span class="px-2 py-0.5 rounded-full text-xs font-semibold status-ready">${o.orderStatus}</span>
-              <span class="text-base font-bold text-accent-light">${formatRupiah(o.totalPrice)}</span>
+              <span class="px-2 py-0.5 rounded-full text-xs font-semibold status-ready">${getStatusLabel(o.order_status)}</span>
+              <span class="text-base font-bold text-accent-light">${formatRupiah(o.total_price)}</span>
             </div>
             <button class="waiter-done-btn w-full py-3 rounded-xl bg-gradient-to-r from-magi-500 to-magi-600 text-white font-bold hover:from-magi-400 hover:to-magi-500 transition-all shadow-lg shadow-magi-500/20" data-order-id="${o.id}">
               🏁 Pesanan Selesai
@@ -1352,7 +1667,7 @@
       }).join('');
 
       return `
-        ${renderStaffSidebar('Waiter')}
+        ${renderStaffSidebar('waiter')}
         <button id="btn-toggle-sidebar" class="lg:hidden fixed top-4 left-4 z-40 w-10 h-10 rounded-xl glass flex items-center justify-center hover:bg-white/10 transition-colors">
           <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
@@ -1381,30 +1696,42 @@
     }
 
     // ============================================================
-    // 6. EVENT HANDLERS
+    // 10. EVENT HANDLERS
     // ============================================================
 
     function attachEventListeners() {
       // -- ACCESS SELECT --
       const btnCustomer = document.getElementById('btn-customer');
-      if (btnCustomer) btnCustomer.addEventListener('click', () => {
+      if (btnCustomer) btnCustomer.addEventListener('click', async () => {
         state.selectedAccess = 'customer';
         navigate('customer-table-select');
+        // Load tables data from Supabase
+        if (tablesData.length === 0) {
+          await loadTablesData();
+          render();
+        }
       });
 
       const btnStaff = document.getElementById('btn-staff');
       if (btnStaff) btnStaff.addEventListener('click', () => {
         state.selectedAccess = 'staff';
+        state.loginError = '';
         navigate('staff-login');
       });
 
       // -- BACK BUTTONS --
       document.querySelectorAll('#btn-back-access, #btn-back-access-staff').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
           state.selectedAccess = null;
           state.selectedRole = null;
           state.staffName = '';
+          state.staffSession = null;
           state.adminSidebarView = 'dashboard';
+          state.loginError = '';
+          // Logout if logged in
+          if (state.staffSession) {
+            await logoutStaff();
+          }
           navigate('access-select');
         });
       });
@@ -1414,7 +1741,6 @@
 
       document.querySelectorAll('#btn-back-menu, #btn-back-menu-bottom').forEach(btn => {
         btn.addEventListener('click', () => {
-          // Save customer note before going back
           const noteInput = document.getElementById('input-customer-note');
           if (noteInput) state.customerNote = noteInput.value;
           navigate('customer-menu');
@@ -1433,12 +1759,17 @@
       });
 
       const btnContinueMenu = document.getElementById('btn-continue-menu');
-      if (btnContinueMenu) btnContinueMenu.addEventListener('click', () => {
+      if (btnContinueMenu) btnContinueMenu.addEventListener('click', async () => {
         if (!state.selectedTable) {
           showToast('Silakan pilih meja terlebih dahulu.', 'error');
           return;
         }
         navigate('customer-menu');
+        // Load menu data from Supabase
+        if (menuData.length === 0) {
+          await loadMenuData();
+          render();
+        }
       });
 
       // -- MENU --
@@ -1451,7 +1782,7 @@
 
       document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-          const menu = MENU_DATA.find(m => m.id === parseInt(btn.dataset.id));
+          const menu = menuData.find(m => m.id === btn.dataset.id);
           if (menu) {
             addToCart(menu);
             showToast(`${menu.name} ditambahkan ke keranjang!`, 'success');
@@ -1460,11 +1791,11 @@
       });
 
       document.querySelectorAll('.cart-plus-btn').forEach(btn => {
-        btn.addEventListener('click', () => updateCartQuantity(parseInt(btn.dataset.id), 1));
+        btn.addEventListener('click', () => updateCartQuantity(btn.dataset.id, 1));
       });
 
       document.querySelectorAll('.cart-minus-btn').forEach(btn => {
-        btn.addEventListener('click', () => updateCartQuantity(parseInt(btn.dataset.id), -1));
+        btn.addEventListener('click', () => updateCartQuantity(btn.dataset.id, -1));
       });
 
       // -- GO TO CART --
@@ -1540,8 +1871,6 @@
       });
 
       // -- Scan Friend QR --
-      // TODO: Integrasi kamera dapat ditambahkan nanti menggunakan WebRTC
-      // atau library QR scanner seperti html5-qrcode
       const btnScanFriend = document.getElementById('btn-scan-friend-qr');
       if (btnScanFriend) btnScanFriend.addEventListener('click', () => {
         const modal = document.getElementById('modal-scan-friend');
@@ -1554,9 +1883,9 @@
         if (modal) modal.classList.add('hidden');
       });
 
-      // -- PAY NOW --
+      // -- PAY NOW (Create Order in Supabase) --
       const btnPayNow = document.getElementById('btn-pay-now');
-      if (btnPayNow) btnPayNow.addEventListener('click', () => {
+      if (btnPayNow) btnPayNow.addEventListener('click', async () => {
         if (state.cart.length === 0) {
           showToast('Keranjang kosong!', 'error');
           return;
@@ -1566,100 +1895,140 @@
           return;
         }
 
-        // Create new order
-        const now = new Date();
-        const timeStr = now.toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' });
-        const order = {
-          id: Date.now(),
+        state.isLoading = true;
+        render();
+
+        // Map payment method to database value
+        const dbPaymentMethod = PAYMENT_METHOD_MAP[state.selectedPaymentMethod] || state.selectedPaymentMethod;
+
+        const orderData = {
           orderCode: generateOrderCode(),
           tableNumber: state.selectedTable,
-          items: state.cart.map(c => ({
-            id: c.menuItem.id,
-            name: c.menuItem.name,
-            price: c.menuItem.price,
-            quantity: c.quantity,
-          })),
           customerNote: state.customerNote,
           totalPrice: getCartTotal(),
-          paymentMethod: state.selectedPaymentMethod,
-          paymentStatus: 'Lunas',
-          orderStatus: 'Menunggu Dimasak',
-          createdAt: timeStr,
+          paymentMethod: dbPaymentMethod,
         };
 
-        // TODO: send order to backend API
-        // NOTE: GitHub Pages hanya hosting statis, sehingga data dari HP pelanggan
-        // tidak otomatis tersinkron ke laptop pegawai tanpa backend/database
-        // seperti Supabase, Firebase, atau API backend sendiri.
+        const order = await createOrder(orderData, state.cart);
 
-        state.orders.push(order);
-        state.lastOrderInfo = order;
-        state.cart = [];
-        state.customerNote = '';
-        state.selectedPaymentMethod = null;
-        state.splitBillEnabled = false;
-        state.splitParticipants = [];
-        state.splitCount = 2;
-        saveState();
-        navigate('customer-success');
+        state.isLoading = false;
+
+        if (order) {
+          state.lastOrderInfo = order;
+          state.cart = [];
+          state.customerNote = '';
+          state.selectedPaymentMethod = null;
+          state.splitBillEnabled = false;
+          state.splitParticipants = [];
+          state.splitCount = 2;
+          saveLocalState();
+          showToast('Pesanan berhasil dibuat! 🎉', 'success');
+          navigate('customer-success');
+        } else {
+          render();
+        }
       });
 
       // -- ORDER AGAIN --
       const btnOrderAgain = document.getElementById('btn-order-again');
       if (btnOrderAgain) btnOrderAgain.addEventListener('click', () => {
-        // Keep table, clear cart
         state.cart = [];
         state.menuFilter = 'Semua';
         navigate('customer-menu');
       });
 
-      // -- STAFF LOGIN --
-      document.querySelectorAll('.role-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          state.selectedRole = btn.dataset.role;
+      // -- STAFF LOGIN (Supabase Auth) --
+      const btnStaffLogin = document.getElementById('btn-staff-login');
+      if (btnStaffLogin) btnStaffLogin.addEventListener('click', async () => {
+        const emailInput = document.getElementById('input-staff-email');
+        const passwordInput = document.getElementById('input-staff-password');
+
+        const email = emailInput ? emailInput.value.trim() : '';
+        const password = passwordInput ? passwordInput.value : '';
+
+        if (!email) {
+          state.loginError = 'Masukkan email pegawai.';
+          render();
+          return;
+        }
+        if (!password) {
+          state.loginError = 'Masukkan password.';
+          render();
+          return;
+        }
+
+        state.isLoading = true;
+        state.loginError = '';
+        render();
+
+        const result = await loginStaff(email, password);
+
+        state.isLoading = false;
+
+        if (result.error) {
+          state.loginError = result.error;
+          render();
+          return;
+        }
+
+        state.staffSession = result.session;
+        state.selectedRole = result.role;
+        state.staffName = result.name;
+        state.adminSidebarView = 'dashboard';
+
+        // Load initial data
+        await loadTablesData();
+        await loadDashboardOrders();
+
+        // Start realtime subscription
+        subscribeToOrders(async (payload) => {
+          // Refresh dashboard data on any order change
+          await loadDashboardOrders();
           render();
         });
+
+        showToast(`Selamat datang, ${result.name}!`, 'success');
+
+        if (state.selectedRole === 'admin') navigate('admin-dashboard');
+        else if (state.selectedRole === 'dapur') navigate('kitchen-dashboard');
+        else if (state.selectedRole === 'waiter') navigate('waiter-dashboard');
       });
 
-      const inputStaffName = document.getElementById('input-staff-name');
-      if (inputStaffName) {
-        inputStaffName.addEventListener('input', (e) => {
-          state.staffName = e.target.value;
+      // Allow Enter key to submit login
+      const passwordInput = document.getElementById('input-staff-password');
+      if (passwordInput) {
+        passwordInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            const loginBtn = document.getElementById('btn-staff-login');
+            if (loginBtn) loginBtn.click();
+          }
         });
       }
 
-      const btnStaffLogin = document.getElementById('btn-staff-login');
-      if (btnStaffLogin) btnStaffLogin.addEventListener('click', () => {
-        if (!state.staffName.trim()) {
-          showToast('Masukkan nama pegawai!', 'error');
-          return;
-        }
-        if (!state.selectedRole) {
-          showToast('Pilih role terlebih dahulu!', 'error');
-          return;
-        }
-        state.adminSidebarView = 'dashboard';
-        if (state.selectedRole === 'Admin') navigate('admin-dashboard');
-        else if (state.selectedRole === 'Dapur') navigate('kitchen-dashboard');
-        else if (state.selectedRole === 'Waiter') navigate('waiter-dashboard');
-      });
-
       // -- STAFF SIDEBAR NAV --
       document.querySelectorAll('.sidebar-nav-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
           state.adminSidebarView = btn.dataset.view;
+          // Refresh data when switching views
+          if (btn.dataset.view === 'orders' || btn.dataset.view === 'dashboard') {
+            await loadDashboardOrders();
+          }
           render();
         });
       });
 
       // -- STAFF LOGOUT --
       const btnLogout = document.getElementById('btn-staff-logout');
-      if (btnLogout) btnLogout.addEventListener('click', () => {
+      if (btnLogout) btnLogout.addEventListener('click', async () => {
+        await logoutStaff();
         state.selectedAccess = null;
         state.selectedRole = null;
         state.staffName = '';
+        state.staffSession = null;
         state.adminSidebarView = 'dashboard';
+        state.orders = [];
         navigate('access-select');
+        showToast('Berhasil logout.', 'info');
       });
 
       // -- ADMIN QR BUTTONS --
@@ -1682,7 +2051,6 @@
           navigator.clipboard.writeText(APP_URL).then(() => {
             showToast('Link berhasil disalin!', 'success');
           }).catch(() => {
-            // Fallback
             const ta = document.createElement('textarea');
             ta.value = APP_URL;
             document.body.appendChild(ta);
@@ -1701,30 +2069,40 @@
         window.open(qrUrl, '_blank');
       });
 
-      // -- KITCHEN: DONE COOKING --
+      // -- KITCHEN: DONE COOKING (Supabase update) --
       document.querySelectorAll('.kitchen-done-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const orderId = parseInt(btn.dataset.orderId);
-          const order = state.orders.find(o => o.id === orderId);
-          if (order) {
-            order.orderStatus = 'Siap Diantar';
-            saveState();
-            showToast(`Pesanan ${order.orderCode} siap diantar!`, 'success');
+        btn.addEventListener('click', async () => {
+          const orderId = btn.dataset.orderId;
+          btn.disabled = true;
+          btn.textContent = '⏳ Memproses...';
+
+          const updated = await markOrderAsCooked(orderId);
+          if (updated) {
+            showToast(`Pesanan ${updated.order_code} siap diantar!`, 'success');
+            await loadDashboardOrders();
             render();
+          } else {
+            btn.disabled = false;
+            btn.textContent = '✅ Selesai Dimasak';
           }
         });
       });
 
-      // -- WAITER: ORDER DONE --
+      // -- WAITER: ORDER DONE (Supabase update) --
       document.querySelectorAll('.waiter-done-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const orderId = parseInt(btn.dataset.orderId);
-          const order = state.orders.find(o => o.id === orderId);
-          if (order) {
-            order.orderStatus = 'Selesai';
-            saveState();
-            showToast(`Pesanan ${order.orderCode} selesai!`, 'success');
+        btn.addEventListener('click', async () => {
+          const orderId = btn.dataset.orderId;
+          btn.disabled = true;
+          btn.textContent = '⏳ Memproses...';
+
+          const updated = await markOrderAsCompleted(orderId);
+          if (updated) {
+            showToast(`Pesanan ${updated.order_code} selesai!`, 'success');
+            await loadDashboardOrders();
             render();
+          } else {
+            btn.disabled = false;
+            btn.textContent = '🏁 Pesanan Selesai';
           }
         });
       });
@@ -1733,7 +2111,6 @@
       const btnToggle = document.getElementById('btn-toggle-sidebar');
       const sidebar = document.getElementById('staff-sidebar');
       if (btnToggle && sidebar) {
-        // Check initial state
         if (!sidebar.classList.contains('translate-x-0') && window.innerWidth < 1024) {
           sidebar.classList.add('-translate-x-full');
         }
@@ -1752,39 +2129,10 @@
     }
 
     // ============================================================
-    // 7. PLACEHOLDER API INTEGRATION COMMENTS
+    // 11. INITIALIZATION
     // ============================================================
 
-    // TODO: Tambahkan integrasi dengan backend API
-    //
-    // Contoh endpoint yang diperlukan:
-    // - POST /api/orders           → Membuat pesanan baru
-    // - GET  /api/orders           → Mengambil daftar pesanan
-    // - PUT  /api/orders/:id       → Mengupdate status pesanan
-    // - GET  /api/tables           → Mengambil daftar meja dan statusnya
-    // - PUT  /api/tables/:id       → Mengupdate status meja
-    // - GET  /api/menu             → Mengambil daftar menu
-    //
-    // Untuk real-time update gunakan:
-    // - WebSocket
-    // - Supabase Realtime
-    // - Firebase Realtime Database / Firestore
-    //
-    // Struktur order yang dikirim ke API:
-    // {
-    //   tableNumber: number,
-    //   items: [{ id, name, price, quantity }],
-    //   customerNote: string,
-    //   totalPrice: number,
-    //   paymentMethod: string,
-    //   orderStatus: string,
-    // }
-
-    // ============================================================
-    // INIT
-    // ============================================================
-
-    loadState();
+    loadLocalState();
     render();
   </script>
 </body>
