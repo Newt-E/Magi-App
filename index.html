@@ -240,8 +240,8 @@
     // - Jangan pernah meletakkan service_role key di frontend.
     // ============================================================
 
-    const SUPABASE_URL = "https://nhaekdnvliytsvayfeqn.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oYWVrZG52bGl5dHN2YXlmZXFuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NTU2NjYsImV4cCI6MjA5NjAzMTY2Nn0.fuUcC0OsdfGj3AYdwzEvADDK_7q7jRHmTZChrNDA4cc";
+    const SUPABASE_URL = "ISI_DENGAN_SUPABASE_PROJECT_URL";
+    const SUPABASE_ANON_KEY = "ISI_DENGAN_SUPABASE_ANON_KEY";
 
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -253,6 +253,7 @@
 
     // Database status values (snake_case) → Display labels
     const STATUS_LABELS = {
+      menunggu_verifikasi_pembayaran: 'Menunggu Verifikasi Pembayaran',
       menunggu_dimasak: 'Menunggu Dimasak',
       siap_diantar: 'Siap Diantar',
       selesai: 'Selesai',
@@ -269,9 +270,17 @@
     // Database payment status values → Display labels
     const PAYMENT_STATUS_LABELS = {
       belum_dibayar: 'Belum Dibayar',
+      menunggu_verifikasi: 'Menunggu Verifikasi',
       dummy_paid: 'Lunas (Demo)',
       paid: 'Lunas',
-      failed: 'Gagal',
+      failed: 'Gagal/Ditolak',
+    };
+
+    const SPLIT_PAYMENT_STATUS_LABELS = {
+      belum_bayar: 'Belum Bayar',
+      menunggu_verifikasi: 'Menunggu Verifikasi',
+      terverifikasi: 'Terverifikasi',
+      ditolak: 'Ditolak'
     };
 
     // Frontend payment method IDs → Database values
@@ -364,6 +373,17 @@
 
     function getCartTotal() {
       return state.cart.reduce((sum, item) => sum + (item.menuItem.price * item.quantity), 0);
+    }
+
+    function getSplitAmount() {
+      const total = getCartTotal();
+      if (!state.splitBillEnabled || state.splitCount < 2) return total;
+      return Math.ceil(total / state.splitCount);
+    }
+
+    function getPayableAmount() {
+      if (state.splitBillEnabled) return getSplitAmount();
+      return getCartTotal();
     }
 
     function getCartItemCount() {
@@ -484,8 +504,11 @@
           customer_note: orderData.customerNote || null,
           total_price: orderData.totalPrice,
           payment_method: orderData.paymentMethod,
-          payment_status: 'dummy_paid',
-          order_status: 'menunggu_dimasak',
+          payment_status: orderData.paymentStatus || 'dummy_paid',
+          order_status: orderData.orderStatus || 'menunggu_dimasak',
+          payment_amount: orderData.paymentAmount || null,
+          is_split_bill: orderData.isSplitBill || false,
+          split_amount: orderData.splitAmount || 0,
         })
         .select()
         .single();
@@ -515,6 +538,24 @@
         showToast('Pesanan dibuat tetapi detail item gagal disimpan.', 'error');
       }
 
+      // If split bill, insert participants
+      if (orderData.isSplitBill && orderData.splitParticipants && orderData.splitParticipants.length > 0) {
+        const participantsData = orderData.splitParticipants.map(p => ({
+          order_id: order.id,
+          participant_name: p.name,
+          amount: orderData.splitAmount,
+          payment_status: p.status === 'Menunggu Verifikasi' ? 'menunggu_verifikasi' : 'belum_bayar'
+        }));
+        
+        const { error: splitError } = await supabaseClient
+          .from('split_bill_participants')
+          .insert(participantsData);
+          
+        if (splitError) {
+          console.error('Error creating split bill participants:', splitError);
+        }
+      }
+
       return order;
     }
 
@@ -524,6 +565,7 @@
         .from('orders')
         .select('*, order_items(*)')
         .eq('order_status', 'menunggu_dimasak')
+        .in('payment_status', ['paid', 'dummy_paid', 'belum_dibayar'])
         .order('created_at', { ascending: true });
 
       if (error) {
@@ -594,7 +636,7 @@
     async function fetchAllOrders() {
       const { data, error } = await supabaseClient
         .from('orders')
-        .select('*, order_items(*)')
+        .select('*, order_items(*), split_bill_participants(*)')
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -1061,6 +1103,44 @@
     }
 
     // ----- CUSTOMER CHECKOUT -----
+    function renderQrisPaymentBox() {
+      if (state.selectedPaymentMethod !== 'qris') return '';
+      
+      const payableAmount = getPayableAmount();
+      if (payableAmount === 0) return '';
+      
+      const badgeText = state.splitBillEnabled ? 'Nominal Split Bill' : 'Total Pembayaran';
+      
+      return `
+        <div class="glass rounded-xl p-6 mt-4 border border-magi-400/50 bg-magi-900/40 text-center animate-slide-down shadow-lg shadow-magi-500/10">
+          <h3 class="text-lg font-bold text-white mb-2">Pembayaran QRIS</h3>
+          <span class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-magi-500/20 text-magi-300 mb-4">${badgeText}</span>
+          
+          <div class="bg-white p-3 rounded-2xl w-48 h-48 mx-auto mb-4">
+            <!-- File QRIS perlu diletakkan di folder assets dengan nama qris.png. -->
+            <!-- QRIS ini adalah gambar QRIS merchant statis. -->
+            <!-- File QRIS perlu diletakkan di folder assets dengan nama qris.png. -->
+            <!-- Jika file belum ada, ini akan otomatis membuat QR dummy sebagai contoh. -->
+            <img src="assets/qris.png" alt="QRIS Merchant" class="w-full h-full object-contain" onerror="this.onerror=null; this.src='https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=QRIS_DEMO_MAGI_APP';" />
+          </div>
+          
+          <p class="text-sm text-surface-200 mb-1">Nominal yang harus dibayar:</p>
+          <p class="text-2xl font-black text-white mb-4">${formatRupiah(payableAmount)}</p>
+          
+          <p class="text-xs text-surface-200 mb-6 px-4">Silakan scan QRIS berikut. Pastikan nominal pembayaran sesuai sebelum melanjutkan.</p>
+          
+          <!-- Static QRIS cannot verify payment automatically. -->
+          <!-- The “Saya Sudah Bayar” button is only a customer confirmation claim. -->
+          <!-- Admin/Kasir must verify the payment manually. -->
+          <!-- Real automatic QRIS verification requires a payment gateway and backend webhook. -->
+          <!-- Do not use frontend-only confirmation as proof of payment in production. -->
+          <button id="btn-pay-now" class="w-full py-4 rounded-xl bg-gradient-to-r from-magi-500 to-magi-700 text-white font-bold hover:from-magi-400 hover:to-magi-600 transition-all shadow-lg shadow-magi-500/30 ${state.isLoading ? 'opacity-60 pointer-events-none' : ''}">
+            ${state.isLoading ? '⏳ Memproses...' : 'Saya Sudah Bayar'}
+          </button>
+        </div>
+      `;
+    }
+
     function renderCustomerCheckout() {
       const cartTotal = getCartTotal();
       const payments = [
@@ -1215,11 +1295,13 @@
           </div>
 
           <!-- Pay Button -->
+          ${state.selectedPaymentMethod === 'qris' ? renderQrisPaymentBox() : `
           <div class="fixed bottom-0 left-0 right-0 z-40 p-4 max-w-2xl mx-auto glass border-t border-white/5">
             <button id="btn-pay-now" class="w-full py-4 rounded-2xl bg-gradient-to-r from-accent-dark via-accent to-accent-light text-surface-900 font-black text-base shadow-2xl shadow-accent/30 hover:shadow-accent/50 transition-all ${state.isLoading ? 'opacity-60 pointer-events-none' : ''}">
               ${state.isLoading ? '⏳ Memproses...' : `💳 Bayar & Pesan Sekarang — ${formatRupiah(cartTotal)}`}
             </button>
           </div>
+          `}
 
           <!-- Modal: Split QR -->
           <div id="modal-split-qr" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay">
@@ -1261,6 +1343,16 @@
             </div>
             <h1 class="text-2xl font-black text-white mb-2">Pesanan Berhasil! 🎉</h1>
             <p class="text-surface-200 mb-6">Terima kasih, pesanan Anda sedang diproses.</p>
+
+            ${(info.payment_method === 'qris' || info.paymentMethod === 'qris') && (info.payment_status === 'menunggu_verifikasi' || info.paymentStatus === 'menunggu_verifikasi') ? `
+            <div class="bg-magi-500/20 text-magi-300 p-4 rounded-xl mb-6 border border-magi-500/30 text-sm animate-pulse-slow text-left">
+              <p class="font-bold mb-1 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Menunggu Verifikasi Kasir
+              </p>
+              <p class="text-surface-200 text-xs">Pembayaran QRIS Anda sedang diverifikasi. Pesanan akan diteruskan ke dapur setelah kasir mengkonfirmasi pembayaran.</p>
+            </div>
+            ` : ''}
 
             <div class="glass rounded-2xl p-5 text-left mb-6 border border-white/5">
               <div class="grid grid-cols-2 gap-y-3 text-sm">
@@ -1345,6 +1437,7 @@
       const sidebarLinks = {
         admin: [
           { id: 'dashboard', label: 'Dashboard', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>' },
+          { id: 'verification', label: 'Verifikasi Pembayaran', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>' },
           { id: 'tables', label: 'Manajemen Meja', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>' },
           { id: 'orders', label: 'Pesanan', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>' },
           { id: 'qr', label: 'Generate QR', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>' },
@@ -1442,6 +1535,86 @@
           <!-- Recent orders -->
           <h3 class="text-lg font-bold text-white mb-3">Pesanan Terbaru</h3>
           ${state.orders.length > 0 ? renderOrdersTable(state.orders.slice(0, 10)) : '<div class="glass rounded-xl p-8 text-center border border-white/5"><p class="text-surface-200">Belum ada pesanan.</p></div>'}
+        `;
+      } else if (v === 'verification') {
+        const unverifiedOrders = state.orders.filter(o => o.payment_status === 'menunggu_verifikasi');
+        
+        const verificationCards = unverifiedOrders.map(o => {
+          const isSplit = o.is_split_bill;
+          let splitHtml = '';
+          let actionHtml = '';
+
+          if (isSplit && o.split_bill_participants) {
+            const participants = o.split_bill_participants.map(p => {
+              const st = p.payment_status;
+              let pAction = '';
+              if (st === 'menunggu_verifikasi') {
+                pAction = `
+                  <button class="px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded hover:bg-emerald-500/30 text-xs font-bold" onclick="window.verifySplitParticipant('${p.id}', '${o.id}')">Verifikasi</button>
+                  <button class="px-2 py-1 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 text-xs font-bold" onclick="window.rejectSplitParticipant('${p.id}', '${o.id}')">Tolak</button>
+                `;
+              } else if (st === 'terverifikasi') {
+                pAction = `<span class="text-xs text-emerald-400 font-bold">Terverifikasi</span>`;
+              } else if (st === 'ditolak') {
+                pAction = `<span class="text-xs text-red-400 font-bold">Ditolak</span>`;
+              } else {
+                pAction = `<span class="text-xs text-surface-200">Belum Bayar</span>`;
+              }
+              
+              return `
+                <div class="flex justify-between items-center bg-white/5 p-2 rounded mb-1 border border-white/5">
+                  <div>
+                    <p class="text-sm text-white font-semibold">${p.participant_name}</p>
+                    <p class="text-xs text-surface-200">${formatRupiah(p.amount)}</p>
+                  </div>
+                  <div class="flex gap-2">
+                    ${pAction}
+                  </div>
+                </div>
+              `;
+            }).join('');
+            
+            splitHtml = `
+              <div class="mt-3 mb-3 border-t border-white/10 pt-3">
+                <p class="text-xs font-bold text-magi-300 mb-2">Verifikasi Split Bill per Peserta:</p>
+                ${participants}
+              </div>
+            `;
+            actionHtml = `<p class="text-xs text-surface-200 text-center italic">Selesaikan verifikasi semua peserta untuk memproses pesanan.</p>`;
+          } else {
+            actionHtml = `
+              <div class="flex gap-2 mt-4 pt-4 border-t border-white/10">
+                <button class="flex-1 py-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl hover:bg-emerald-500/30 text-sm font-bold transition-colors" onclick="window.verifyPayment('${o.id}')">✅ Verifikasi Pembayaran</button>
+                <button class="flex-1 py-2.5 bg-red-500/20 text-red-400 rounded-xl hover:bg-red-500/30 text-sm font-bold transition-colors" onclick="window.rejectPayment('${o.id}')">❌ Tolak</button>
+              </div>
+            `;
+          }
+
+          return `
+            <div class="glass rounded-2xl p-5 border border-amber-500/30 mb-4 animate-slide-up bg-amber-500/5">
+              <div class="flex justify-between items-start mb-2">
+                <div>
+                  <h3 class="text-lg font-black text-white">${o.order_code}</h3>
+                  <p class="text-sm text-surface-200">Meja ${o.table_number} • ${getPaymentLabel(o.payment_method)}</p>
+                </div>
+                <div class="text-right">
+                  <p class="text-xs text-surface-200">Total Tagihan</p>
+                  <p class="text-xl font-black text-accent-light">${formatRupiah(o.total_price)}</p>
+                </div>
+              </div>
+              
+              ${splitHtml}
+              ${actionHtml}
+            </div>
+          `;
+        }).join('');
+
+        contentHtml = `
+          <h2 class="text-2xl font-black text-white mb-6 flex items-center gap-2">
+            <svg class="w-6 h-6 text-magi-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Verifikasi Pembayaran
+          </h2>
+          ${unverifiedOrders.length > 0 ? verificationCards : '<div class="glass rounded-xl p-8 text-center border border-white/5"><p class="text-surface-200">Tidak ada pembayaran yang menunggu verifikasi.</p></div>'}
         `;
       } else if (v === 'tables') {
         const tableRows = tablesData.map(t => {
@@ -1900,6 +2073,7 @@
 
         // Map payment method to database value
         const dbPaymentMethod = PAYMENT_METHOD_MAP[state.selectedPaymentMethod] || state.selectedPaymentMethod;
+        const isQris = dbPaymentMethod === 'qris';
 
         const orderData = {
           orderCode: generateOrderCode(),
@@ -1907,6 +2081,12 @@
           customerNote: state.customerNote,
           totalPrice: getCartTotal(),
           paymentMethod: dbPaymentMethod,
+          paymentStatus: isQris ? 'menunggu_verifikasi' : 'dummy_paid',
+          orderStatus: isQris ? 'menunggu_verifikasi_pembayaran' : 'menunggu_dimasak',
+          paymentAmount: getPayableAmount(),
+          isSplitBill: state.splitBillEnabled,
+          splitAmount: getSplitAmount(),
+          splitParticipants: state.splitParticipants,
         };
 
         const order = await createOrder(orderData, state.cart);
@@ -2127,6 +2307,103 @@
         });
       });
     }
+
+    // ============================================================
+    // GLOBAL ADMIN ACTIONS
+    // ============================================================
+    window.verifyPayment = async function(orderId) {
+      if (!confirm('Verifikasi pembayaran pesanan ini? Pesanan akan diteruskan ke dapur.')) return;
+      
+      state.isLoading = true; render();
+      
+      const { error } = await supabaseClient
+        .from('orders')
+        .update({ 
+          payment_status: 'paid',
+          order_status: 'menunggu_dimasak'
+        })
+        .eq('id', orderId);
+        
+      if (error) showToast('Gagal memverifikasi: ' + error.message, 'error');
+      else showToast('Pembayaran berhasil diverifikasi', 'success');
+      
+      state.isLoading = false; render();
+    };
+
+    window.rejectPayment = async function(orderId) {
+      if (!confirm('Tolak pembayaran pesanan ini? Pesanan akan dibatalkan.')) return;
+      
+      state.isLoading = true; render();
+      
+      const { error } = await supabaseClient
+        .from('orders')
+        .update({ 
+          payment_status: 'failed',
+          order_status: 'dibatalkan'
+        })
+        .eq('id', orderId);
+        
+      if (error) showToast('Gagal menolak: ' + error.message, 'error');
+      else showToast('Pembayaran ditolak', 'success');
+      
+      state.isLoading = false; render();
+    };
+
+    window.verifySplitParticipant = async function(participantId, orderId) {
+      state.isLoading = true; render();
+      
+      // Update participant
+      const { error } = await supabaseClient
+        .from('split_bill_participants')
+        .update({ payment_status: 'terverifikasi' })
+        .eq('id', participantId);
+        
+      if (error) {
+        showToast('Gagal memverifikasi peserta: ' + error.message, 'error');
+        state.isLoading = false; render();
+        return;
+      }
+      
+      // Check if all are verified
+      const { data: participants } = await supabaseClient
+        .from('split_bill_participants')
+        .select('payment_status')
+        .eq('order_id', orderId);
+        
+      const allVerified = participants && participants.every(p => p.payment_status === 'terverifikasi');
+      
+      if (allVerified) {
+        // Auto verify order
+        await supabaseClient
+          .from('orders')
+          .update({ 
+            payment_status: 'paid',
+            order_status: 'menunggu_dimasak'
+          })
+          .eq('id', orderId);
+        showToast('Semua peserta terverifikasi. Pesanan diteruskan ke dapur!', 'success');
+      } else {
+        showToast('Peserta terverifikasi', 'success');
+      }
+      
+      state.isLoading = false; render();
+    };
+
+    window.rejectSplitParticipant = async function(participantId, orderId) {
+      if (!confirm('Tolak pembayaran peserta ini?')) return;
+      
+      state.isLoading = true; render();
+      
+      const { error } = await supabaseClient
+        .from('split_bill_participants')
+        .update({ payment_status: 'ditolak' })
+        .eq('id', participantId);
+        
+      if (error) showToast('Gagal menolak peserta: ' + error.message, 'error');
+      else showToast('Pembayaran peserta ditolak', 'success');
+      
+      state.isLoading = false; render();
+    };
 
     // ============================================================
     // 11. INITIALIZATION
