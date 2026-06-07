@@ -335,6 +335,8 @@
           cart: state.cart,
           selectedTable: state.selectedTable,
           customerNote: state.customerNote,
+          lastOrderInfo: state.lastOrderInfo,
+          currentView: state.currentView && state.currentView.startsWith('customer') ? state.currentView : 'access-select'
         };
         localStorage.setItem('magi_state', JSON.stringify(toSave));
       } catch (e) {
@@ -350,6 +352,8 @@
           if (parsed.cart) state.cart = parsed.cart;
           if (parsed.selectedTable) state.selectedTable = parsed.selectedTable;
           if (parsed.customerNote) state.customerNote = parsed.customerNote;
+          if (parsed.lastOrderInfo) state.lastOrderInfo = parsed.lastOrderInfo;
+          if (parsed.currentView) state.currentView = parsed.currentView;
         }
       } catch (e) {
         console.warn('LocalStorage load failed:', e);
@@ -979,10 +983,18 @@
                   <p class="text-xs text-surface-200">Meja ${state.selectedTable}</p>
                 </div>
               </div>
-              <button id="btn-go-cart-header" class="relative w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
-                ${cartCount > 0 ? `<span class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-accent text-xs font-bold text-surface-900 flex items-center justify-center badge-pulse">${cartCount}</span>` : ''}
-              </button>
+              <div class="flex items-center gap-2">
+                ${state.lastOrderInfo ? `
+                  <button id="btn-my-order" class="px-3 py-2 rounded-xl bg-magi-500/20 text-magi-300 text-xs font-bold border border-magi-500/30 hover:bg-magi-500/30 transition-colors flex items-center gap-1.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+                    Pesanan Saya
+                  </button>
+                ` : ''}
+                <button id="btn-go-cart-header" class="relative w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors">
+                  <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
+                  ${cartCount > 0 ? `<span class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-accent text-xs font-bold text-surface-900 flex items-center justify-center badge-pulse">${cartCount}</span>` : ''}
+                </button>
+              </div>
             </div>
             <!-- Category Tabs -->
             <div class="flex gap-2 px-4 pb-3 overflow-x-auto no-scrollbar">
@@ -1329,20 +1341,44 @@
       `;
     }
 
-    // ----- CUSTOMER SUCCESS -----
+    // ----- CUSTOMER SUCCESS / ORDER TRACKING -----
     function renderCustomerSuccess() {
       const info = state.lastOrderInfo;
       if (!info) { navigate('access-select'); return ''; }
+
+      let title = "Status Pesanan";
+      let subtitle = "Terima kasih, pesanan Anda sedang diproses.";
+      let icon = `<svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`;
+      let iconBg = "from-magi-400 to-magi-600";
+      let iconShadow = "shadow-magi-500/30";
+
+      if (info.order_status === 'selesai' || info.orderStatus === 'selesai') {
+        title = "Pesanan Selesai! 🎉";
+        subtitle = "Selamat menikmati hidangan Anda.";
+        icon = `<svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>`;
+        iconBg = "from-emerald-400 to-emerald-600";
+        iconShadow = "shadow-emerald-500/30";
+      } else if (info.order_status === 'dibatalkan' || info.orderStatus === 'dibatalkan') {
+        title = "Pesanan Dibatalkan";
+        subtitle = "Mohon maaf, pesanan Anda telah dibatalkan.";
+        icon = `<svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>`;
+        iconBg = "from-red-400 to-red-600";
+        iconShadow = "shadow-red-500/30";
+      } else if (info.order_status === 'siap_diantar' || info.orderStatus === 'siap_diantar') {
+        title = "Siap Diantar 🚀";
+        subtitle = "Pesanan Anda sedang diantar ke meja.";
+      }
+
       return `
         <div class="min-h-screen flex items-center justify-center p-4 animate-fade-in">
           <div class="max-w-md w-full text-center">
             <div class="animate-bounce-subtle mb-6">
-              <div class="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center mx-auto shadow-2xl shadow-emerald-500/30">
-                <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+              <div class="w-24 h-24 rounded-full bg-gradient-to-br ${iconBg} flex items-center justify-center mx-auto shadow-2xl ${iconShadow}">
+                ${icon}
               </div>
             </div>
-            <h1 class="text-2xl font-black text-white mb-2">Pesanan Berhasil! 🎉</h1>
-            <p class="text-surface-200 mb-6">Terima kasih, pesanan Anda sedang diproses.</p>
+            <h1 class="text-2xl font-black text-white mb-2">${title}</h1>
+            <p class="text-surface-200 mb-6">${subtitle}</p>
 
             ${(info.payment_method === 'qris' || info.paymentMethod === 'qris') && (info.payment_status === 'menunggu_verifikasi' || info.paymentStatus === 'menunggu_verifikasi') ? `
             <div class="bg-magi-500/20 text-magi-300 p-4 rounded-xl mb-6 border border-magi-500/30 text-sm animate-pulse-slow text-left">
@@ -1365,7 +1401,7 @@
                 <span class="text-surface-200">Pembayaran</span>
                 <span class="text-white font-bold text-right">${getPaymentLabel(info.payment_method || info.paymentMethod)}</span>
                 <span class="text-surface-200">Status</span>
-                <span class="text-right"><span class="px-2 py-0.5 rounded-full text-xs font-semibold status-waiting">${getStatusLabel(info.order_status || 'menunggu_dimasak')}</span></span>
+                <span class="text-right"><span class="px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusClass(info.order_status || 'menunggu_dimasak')}">${getStatusLabel(info.order_status || 'menunggu_dimasak')}</span></span>
               </div>
             </div>
 
@@ -1976,6 +2012,12 @@
         btn.addEventListener('click', () => navigate('customer-cart'));
       });
 
+      // -- GO TO MY ORDER --
+      const btnMyOrder = document.getElementById('btn-my-order');
+      if (btnMyOrder) btnMyOrder.addEventListener('click', () => {
+        navigate('customer-success');
+      });
+
       // -- CUSTOMER NOTE INPUT --
       const noteInput = document.getElementById('input-customer-note');
       if (noteInput) {
@@ -2103,6 +2145,16 @@
           state.splitCount = 2;
           saveLocalState();
           showToast('Pesanan berhasil dibuat! 🎉', 'success');
+          
+          // Subscribe customer to real-time updates for tracking
+          subscribeToOrders((payload) => {
+            if (payload.new && state.lastOrderInfo && payload.new.id === state.lastOrderInfo.id) {
+              state.lastOrderInfo = { ...state.lastOrderInfo, ...payload.new };
+              saveLocalState();
+              if (state.currentView === 'customer-success') render();
+            }
+          });
+
           navigate('customer-success');
         } else {
           render();
@@ -2162,9 +2214,10 @@
 
         // Start realtime subscription
         subscribeToOrders(async (payload) => {
-          // Refresh dashboard data on any order change
-          await loadDashboardOrders();
-          render();
+          if (state.currentView.includes('dashboard')) {
+            await loadDashboardOrders();
+            render();
+          }
         });
 
         showToast(`Selamat datang, ${result.name}!`, 'success');
@@ -2410,6 +2463,18 @@
     // ============================================================
 
     loadLocalState();
+    
+    // Auto-subscribe customer to real-time updates if they have an active order
+    if (state.lastOrderInfo && state.currentView && state.currentView.startsWith('customer')) {
+      subscribeToOrders((payload) => {
+        if (payload.new && state.lastOrderInfo && payload.new.id === state.lastOrderInfo.id) {
+          state.lastOrderInfo = { ...state.lastOrderInfo, ...payload.new };
+          saveLocalState();
+          if (state.currentView === 'customer-success') render();
+        }
+      });
+    }
+
     render();
   </script>
 </body>
