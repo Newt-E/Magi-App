@@ -550,11 +550,11 @@
           amount: orderData.splitAmount,
           payment_status: p.status === 'Menunggu Verifikasi' ? 'menunggu_verifikasi' : 'belum_bayar'
         }));
-        
+
         const { error: splitError } = await supabaseClient
           .from('split_bill_participants')
           .insert(participantsData);
-          
+
         if (splitError) {
           console.error('Error creating split bill participants:', splitError);
         }
@@ -787,12 +787,16 @@
           <div class="text-center max-w-lg w-full">
             <!-- Logo / Brand -->
             <div class="mb-8">
-              <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-magi-500 to-magi-700 shadow-lg shadow-magi-500/30 mb-6 animate-bounce-subtle overflow-hidden">
-                
-                <!-- INI KODE LOGONYA -->
-                <img src="assets/magi_logo.png" alt="MAGI Logo" class="w-full h-full object-cover" />
+              <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-magi-500 to-magi-700 shadow-lg shadow-magi-500/30 mb-6 animate-bounce-subtle">
+                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
               </div>
               <h1 class="text-5xl sm:text-6xl font-black gradient-text tracking-tight mb-3">MAGI</h1>
+              <p class="text-surface-200 text-base sm:text-lg font-light leading-relaxed">
+                Sistem pemesanan makanan modern<br class="hidden sm:block"/> untuk pelanggan dan pegawai.
+              </p>
+            </div>
 
             <!-- Question -->
             <div class="mb-8 animate-slide-up" style="animation-delay: 0.15s">
@@ -979,6 +983,10 @@
                   <p class="text-xs text-surface-200">Meja ${state.selectedTable}</p>
                 </div>
               </div>
+              <button id="btn-go-cart-header" class="relative w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
+                ${cartCount > 0 ? `<span class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-accent text-xs font-bold text-surface-900 flex items-center justify-center badge-pulse">${cartCount}</span>` : ''}
+              </button>
               <div class="flex items-center gap-2">
                 ${state.lastOrderInfo ? `
                   <button id="btn-my-order" class="px-3 py-2 rounded-xl bg-magi-500/20 text-magi-300 text-xs font-bold border border-magi-500/30 hover:bg-magi-500/30 transition-colors flex items-center gap-1.5">
@@ -1113,12 +1121,12 @@
     // ----- CUSTOMER CHECKOUT -----
     function renderQrisPaymentBox() {
       if (state.selectedPaymentMethod !== 'qris') return '';
-      
+
       const payableAmount = getPayableAmount();
       if (payableAmount === 0) return '';
-      
+
       const badgeText = state.splitBillEnabled ? 'Nominal Split Bill' : 'Total Pembayaran';
-      
+
       return `
         <div class="glass rounded-xl p-6 mt-4 border border-magi-400/50 bg-magi-900/40 text-center animate-slide-down shadow-lg shadow-magi-500/10">
           <h3 class="text-lg font-bold text-white mb-2">Pembayaran QRIS</h3>
@@ -1337,6 +1345,7 @@
       `;
     }
 
+    // ----- CUSTOMER SUCCESS -----
     // ----- CUSTOMER SUCCESS / ORDER TRACKING -----
     function renderCustomerSuccess() {
       const info = state.lastOrderInfo;
@@ -1369,10 +1378,14 @@
         <div class="min-h-screen flex items-center justify-center p-4 animate-fade-in">
           <div class="max-w-md w-full text-center">
             <div class="animate-bounce-subtle mb-6">
+              <div class="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center mx-auto shadow-2xl shadow-emerald-500/30">
+                <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
               <div class="w-24 h-24 rounded-full bg-gradient-to-br ${iconBg} flex items-center justify-center mx-auto shadow-2xl ${iconShadow}">
                 ${icon}
               </div>
             </div>
+            <h1 class="text-2xl font-black text-white mb-2">Pesanan Berhasil! 🎉</h1>
+            <p class="text-surface-200 mb-6">Terima kasih, pesanan Anda sedang diproses.</p>
             <h1 class="text-2xl font-black text-white mb-2">${title}</h1>
             <p class="text-surface-200 mb-6">${subtitle}</p>
 
@@ -1397,6 +1410,7 @@
                 <span class="text-surface-200">Pembayaran</span>
                 <span class="text-white font-bold text-right">${getPaymentLabel(info.payment_method || info.paymentMethod)}</span>
                 <span class="text-surface-200">Status</span>
+                <span class="text-right"><span class="px-2 py-0.5 rounded-full text-xs font-semibold status-waiting">${getStatusLabel(info.order_status || 'menunggu_dimasak')}</span></span>
                 <span class="text-right"><span class="px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusClass(info.order_status || 'menunggu_dimasak')}">${getStatusLabel(info.order_status || 'menunggu_dimasak')}</span></span>
               </div>
             </div>
@@ -1570,7 +1584,7 @@
         `;
       } else if (v === 'verification') {
         const unverifiedOrders = state.orders.filter(o => o.payment_status === 'menunggu_verifikasi');
-        
+
         const verificationCards = unverifiedOrders.map(o => {
           const isSplit = o.is_split_bill;
           let splitHtml = '';
@@ -1592,7 +1606,7 @@
               } else {
                 pAction = `<span class="text-xs text-surface-200">Belum Bayar</span>`;
               }
-              
+
               return `
                 <div class="flex justify-between items-center bg-white/5 p-2 rounded mb-1 border border-white/5">
                   <div>
@@ -1605,7 +1619,7 @@
                 </div>
               `;
             }).join('');
-            
+
             splitHtml = `
               <div class="mt-3 mb-3 border-t border-white/10 pt-3">
                 <p class="text-xs font-bold text-magi-300 mb-2">Verifikasi Split Bill per Peserta:</p>
@@ -2210,6 +2224,9 @@
 
         // Start realtime subscription
         subscribeToOrders(async (payload) => {
+          // Refresh dashboard data on any order change
+          await loadDashboardOrders();
+          render();
           if (state.currentView.includes('dashboard')) {
             await loadDashboardOrders();
             render();
@@ -2362,9 +2379,9 @@
     // ============================================================
     window.verifyPayment = async function(orderId) {
       if (!confirm('Verifikasi pembayaran pesanan ini? Pesanan akan diteruskan ke dapur.')) return;
-      
+
       state.isLoading = true; render();
-      
+
       const { error } = await supabaseClient
         .from('orders')
         .update({ 
@@ -2372,18 +2389,18 @@
           order_status: 'menunggu_dimasak'
         })
         .eq('id', orderId);
-        
+
       if (error) showToast('Gagal memverifikasi: ' + error.message, 'error');
       else showToast('Pembayaran berhasil diverifikasi', 'success');
-      
+
       state.isLoading = false; render();
     };
 
     window.rejectPayment = async function(orderId) {
       if (!confirm('Tolak pembayaran pesanan ini? Pesanan akan dibatalkan.')) return;
-      
+
       state.isLoading = true; render();
-      
+
       const { error } = await supabaseClient
         .from('orders')
         .update({ 
@@ -2391,36 +2408,36 @@
           order_status: 'dibatalkan'
         })
         .eq('id', orderId);
-        
+
       if (error) showToast('Gagal menolak: ' + error.message, 'error');
       else showToast('Pembayaran ditolak', 'success');
-      
+
       state.isLoading = false; render();
     };
 
     window.verifySplitParticipant = async function(participantId, orderId) {
       state.isLoading = true; render();
-      
+
       // Update participant
       const { error } = await supabaseClient
         .from('split_bill_participants')
         .update({ payment_status: 'terverifikasi' })
         .eq('id', participantId);
-        
+
       if (error) {
         showToast('Gagal memverifikasi peserta: ' + error.message, 'error');
         state.isLoading = false; render();
         return;
       }
-      
+
       // Check if all are verified
       const { data: participants } = await supabaseClient
         .from('split_bill_participants')
         .select('payment_status')
         .eq('order_id', orderId);
-        
+
       const allVerified = participants && participants.every(p => p.payment_status === 'terverifikasi');
-      
+
       if (allVerified) {
         // Auto verify order
         await supabaseClient
@@ -2434,23 +2451,23 @@
       } else {
         showToast('Peserta terverifikasi', 'success');
       }
-      
+
       state.isLoading = false; render();
     };
 
     window.rejectSplitParticipant = async function(participantId, orderId) {
       if (!confirm('Tolak pembayaran peserta ini?')) return;
-      
+
       state.isLoading = true; render();
-      
+
       const { error } = await supabaseClient
         .from('split_bill_participants')
         .update({ payment_status: 'ditolak' })
         .eq('id', participantId);
-        
+
       if (error) showToast('Gagal menolak peserta: ' + error.message, 'error');
       else showToast('Pembayaran peserta ditolak', 'success');
-      
+
       state.isLoading = false; render();
     };
 
