@@ -838,13 +838,19 @@
 
     // ----- TABLE SELECT -----
     function renderTableSelect() {
-      if (state.isLoading) {
-        return `<div class="min-h-screen flex items-center justify-center">
-          ${renderLoadingSpinner('Memuat data meja...')}
-        </div>`;
-  }
-  // ... sisa kode tidak berubah
-  }
+      if (tablesData.length === 0) {
+        return `
+          <div class="min-h-screen max-w-2xl mx-auto p-4 animate-fade-in">
+            <div class="flex items-center gap-3 mb-6">
+              <button id="btn-back-access" class="w-10 h-10 rounded-xl glass flex items-center justify-center hover:bg-white/10 transition-colors">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+              </button>
+              <h1 class="text-2xl font-bold text-white">Pilih Meja</h1>
+            </div>
+            ${renderLoadingSpinner('Memuat data meja...')}
+          </div>
+        `;
+      }
 
       const tableCards = tablesData.map(t => {
         const isSelected = state.selectedTable === t.table_number;
@@ -901,16 +907,17 @@
           </button>
         </div>
       `;
+    }
 
     // ----- CUSTOMER MENU -----
     function renderCustomerMenu() {
-      if (state.isLoading) {
-        return `<div class="min-h-screen flex items-center justify-center">
-          ${renderLoadingSpinner('Memuat menu...')}
-    </div>`;
-    }
-  // ... sisa kode tidak berubah
-}
+      if (menuData.length === 0) {
+        return `
+          <div class="min-h-screen max-w-2xl mx-auto p-4 animate-fade-in">
+            ${renderLoadingSpinner('Memuat menu...')}
+          </div>
+        `;
+      }
 
       const categories = ['Semua', 'makanan', 'minuman', 'dessert'];
       const catLabels = { 'Semua': 'Semua', 'makanan': 'Makanan', 'minuman': 'Minuman', 'dessert': 'Dessert' };
@@ -1009,7 +1016,7 @@
           ` : ''}
         </div>
       `;
-    
+    }
 
     // ----- CUSTOMER CART -----
     function renderCustomerCart() {
@@ -1902,12 +1909,13 @@
       const btnCustomer = document.getElementById('btn-customer');
       if (btnCustomer) btnCustomer.addEventListener('click', async () => {
         state.selectedAccess = 'customer';
-        state.isLoading = true;
         navigate('customer-table-select');
-        tablesData = await fetchTables();
-        state.isLoading = false;
-        render();
-});
+        // Load tables data from Supabase
+        if (tablesData.length === 0) {
+          await loadTablesData();
+          render();
+        }
+      });
 
       const btnStaff = document.getElementById('btn-staff');
       if (btnStaff) btnStaff.addEventListener('click', () => {
@@ -1960,12 +1968,13 @@
         if (!state.selectedTable) {
           showToast('Silakan pilih meja terlebih dahulu.', 'error');
           return;
-      }
-        state.isLoading = true;
+        }
         navigate('customer-menu');
-        menuData = await fetchMenuItems();
-        state.isLoading = false;
-        render();
+        // Load menu data from Supabase
+        if (menuData.length === 0) {
+          await loadMenuData();
+          render();
+        }
       });
 
       // -- MENU --
