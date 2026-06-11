@@ -1983,12 +1983,10 @@
           showToast('Silakan pilih meja terlebih dahulu.', 'error');
           return;
         }
+        // Tampilkan loading spinner dulu, lalu load menu
         navigate('customer-menu');
-        // Load menu data from Supabase
-        if (menuData.length === 0) {
-          await loadMenuData();
-          render();
-        }
+        await loadMenuData();
+        render();
       });
 
       // -- MENU --
@@ -2173,7 +2171,7 @@
 
       // -- ORDER AGAIN --
       const btnOrderAgain = document.getElementById('btn-order-again');
-      if (btnOrderAgain) btnOrderAgain.addEventListener('click', () => {
+      if (btnOrderAgain) btnOrderAgain.addEventListener('click', async () => {
         // Reset semua state order sebelumnya agar tidak loading terus
         state.cart = [];
         state.menuFilter = 'Semua';
@@ -2190,7 +2188,10 @@
           ordersChannel = null;
         }
         saveLocalState();
+        // Tampilkan loading dulu, lalu load menu fresh
         navigate('customer-menu');
+        await loadMenuData();
+        render();
       });
 
       // -- STAFF LOGIN (Supabase Auth) --
@@ -2491,23 +2492,38 @@
 
     loadLocalState();
 
-    // Jika view bukan customer-success (misal setelah "pesan lagi" atau refresh), clear lastOrderInfo agar tidak masuk ke halaman tracking
+    // Jika view bukan customer-success (misal setelah "pesan lagi" atau refresh), clear lastOrderInfo
     if (state.currentView !== 'customer-success') {
       state.lastOrderInfo = null;
     }
-    
-    // Auto-subscribe customer to real-time updates if they have an active order
-    if (state.lastOrderInfo && state.currentView === 'customer-success') {
-      subscribeToOrders((payload) => {
-        if (payload.new && state.lastOrderInfo && payload.new.id === state.lastOrderInfo.id) {
-          state.lastOrderInfo = { ...state.lastOrderInfo, ...payload.new };
-          saveLocalState();
-          if (state.currentView === 'customer-success') render();
-        }
-      });
+
+    // Auto-load data dari Supabase jika app dipulihkan dari localStorage ke halaman customer
+    async function initAutoLoad() {
+      if (state.currentView === 'customer-table-select' || state.currentView === 'customer-menu'
+          || state.currentView === 'customer-cart' || state.currentView === 'customer-checkout') {
+        // Load both tables and menu data in parallel
+        await Promise.all([
+          tablesData.length === 0 ? loadTablesData() : Promise.resolve(),
+          menuData.length === 0 ? loadMenuData() : Promise.resolve(),
+        ]);
+      }
+
+      // Auto-subscribe customer to real-time updates if they have an active order
+      if (state.lastOrderInfo && state.currentView === 'customer-success') {
+        subscribeToOrders((payload) => {
+          if (payload.new && state.lastOrderInfo && payload.new.id === state.lastOrderInfo.id) {
+            state.lastOrderInfo = { ...state.lastOrderInfo, ...payload.new };
+            saveLocalState();
+            if (state.currentView === 'customer-success') render();
+          }
+        });
+      }
+
+      render();
     }
 
-    render();
+    render(); // Render awal (mungkin loading spinner)
+    initAutoLoad(); // Lalu load data dan render ulang
   </script>
 </body>
 </html>
