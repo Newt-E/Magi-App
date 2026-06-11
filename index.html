@@ -331,16 +331,12 @@
 
     function saveLocalState() {
       try {
-        // Jangan simpan 'customer-success' agar saat refresh tidak balik ke halaman pesanan selesai
-        let viewToSave = state.currentView;
-        if (viewToSave === 'customer-success') viewToSave = 'customer-menu';
-        if (!viewToSave || !viewToSave.startsWith('customer')) viewToSave = 'access-select';
+        // Hanya simpan data keranjang & meja — currentView TIDAK disimpan.
+        // Setiap buka/refresh app selalu mulai dari halaman "masuk sebagai apa?".
         const toSave = {
           cart: state.cart,
           selectedTable: state.selectedTable,
           customerNote: state.customerNote,
-          lastOrderInfo: state.lastOrderInfo,
-          currentView: viewToSave
         };
         localStorage.setItem('magi_state', JSON.stringify(toSave));
       } catch (e) {
@@ -353,11 +349,11 @@
         const saved = localStorage.getItem('magi_state');
         if (saved) {
           const parsed = JSON.parse(saved);
+          // Hanya pulihkan cart, meja, dan catatan — BUKAN currentView.
+          // App selalu mulai dari 'access-select' (nilai default state).
           if (parsed.cart) state.cart = parsed.cart;
           if (parsed.selectedTable) state.selectedTable = parsed.selectedTable;
           if (parsed.customerNote) state.customerNote = parsed.customerNote;
-          if (parsed.lastOrderInfo) state.lastOrderInfo = parsed.lastOrderInfo;
-          if (parsed.currentView) state.currentView = parsed.currentView;
         }
       } catch (e) {
         console.warn('LocalStorage load failed:', e);
@@ -2492,38 +2488,9 @@
 
     loadLocalState();
 
-    // Jika view bukan customer-success (misal setelah "pesan lagi" atau refresh), clear lastOrderInfo
-    if (state.currentView !== 'customer-success') {
-      state.lastOrderInfo = null;
-    }
-
-    // Auto-load data dari Supabase jika app dipulihkan dari localStorage ke halaman customer
-    async function initAutoLoad() {
-      if (state.currentView === 'customer-table-select' || state.currentView === 'customer-menu'
-          || state.currentView === 'customer-cart' || state.currentView === 'customer-checkout') {
-        // Load both tables and menu data in parallel
-        await Promise.all([
-          tablesData.length === 0 ? loadTablesData() : Promise.resolve(),
-          menuData.length === 0 ? loadMenuData() : Promise.resolve(),
-        ]);
-      }
-
-      // Auto-subscribe customer to real-time updates if they have an active order
-      if (state.lastOrderInfo && state.currentView === 'customer-success') {
-        subscribeToOrders((payload) => {
-          if (payload.new && state.lastOrderInfo && payload.new.id === state.lastOrderInfo.id) {
-            state.lastOrderInfo = { ...state.lastOrderInfo, ...payload.new };
-            saveLocalState();
-            if (state.currentView === 'customer-success') render();
-          }
-        });
-      }
-
-      render();
-    }
-
-    render(); // Render awal (mungkin loading spinner)
-    initAutoLoad(); // Lalu load data dan render ulang
+    // currentView tidak pernah disimpan ke localStorage, jadi selalu mulai
+    // dari 'access-select' (nilai default). Tidak perlu logika tambahan.
+    render();
   </script>
 </body>
 </html>
