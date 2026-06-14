@@ -2472,27 +2472,51 @@
     // 11. INITIALIZATION
     // ============================================================
 
-    loadLocalState();
+    (async () => {
+      loadLocalState();
 
-    // Kalau restore ke halaman customer-success, ambil status order terbaru dari DB
-    // dan reconnect realtime subscription
-    if (state.currentView === 'customer-success' && state.lastOrderInfo && state.lastOrderInfo.id) {
-      (async () => {
-        const { data, error } = await supabaseClient
-          .from('orders')
-          .select('*')
-          .eq('id', state.lastOrderInfo.id)
-          .single();
-        if (data && !error) {
-          state.lastOrderInfo = data;
-          saveLocalState();
-        }
-        subscribeToCustomerOrder(state.lastOrderInfo.id);
+      const isCustomerView = ['customer-table-select', 'customer-menu', 'customer-cart', 'customer-checkout', 'customer-success'].includes(state.currentView);
+
+      if (isCustomerView) {
+        // Pre-render loading state
         render();
-      })();
-    } else {
+
+        const promises = [];
+        
+        // Fetch tables if we are on table select
+        if (state.currentView === 'customer-table-select' && tablesData.length === 0) {
+          promises.push(loadTablesData());
+        }
+        
+        // Fetch menu if we are on menu, cart, or checkout
+        if (['customer-menu', 'customer-cart', 'customer-checkout'].includes(state.currentView) && menuData.length === 0) {
+          promises.push(loadMenuData());
+        }
+
+        // Fetch last order details if success view
+        if (state.currentView === 'customer-success' && state.lastOrderInfo && state.lastOrderInfo.id) {
+          const fetchOrderPromise = (async () => {
+            const { data, error } = await supabaseClient
+              .from('orders')
+              .select('*')
+              .eq('id', state.lastOrderInfo.id)
+              .single();
+            if (data && !error) {
+              state.lastOrderInfo = data;
+              saveLocalState();
+            }
+            subscribeToCustomerOrder(state.lastOrderInfo.id);
+          })();
+          promises.push(fetchOrderPromise);
+        }
+
+        if (promises.length > 0) {
+          await Promise.all(promises);
+        }
+      }
+
       render();
-    }
+    })();
   </script>
 </body>
 </html>
