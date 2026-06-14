@@ -322,8 +322,10 @@
       loginError: '',
     };
 
-    // Active Supabase Realtime channel reference
+    // Active Supabase Realtime channel reference (staff)
     let ordersChannel = null;
+    // Active Supabase Realtime channel reference (customer order tracking)
+    let customerOrderChannel = null;
 
     // ============================================================
     // 5. LOCALSTORAGE FUNCTIONS (only for client-side state)
@@ -335,6 +337,9 @@
           cart: state.cart,
           selectedTable: state.selectedTable,
           customerNote: state.customerNote,
+          currentView: state.currentView,
+          lastOrderInfo: state.lastOrderInfo,
+          selectedAccess: state.selectedAccess,
         };
         localStorage.setItem('magi_state', JSON.stringify(toSave));
       } catch (e) {
@@ -350,6 +355,13 @@
           if (parsed.cart) state.cart = parsed.cart;
           if (parsed.selectedTable) state.selectedTable = parsed.selectedTable;
           if (parsed.customerNote) state.customerNote = parsed.customerNote;
+          if (parsed.selectedAccess) state.selectedAccess = parsed.selectedAccess;
+          if (parsed.lastOrderInfo) state.lastOrderInfo = parsed.lastOrderInfo;
+          // Hanya restore view customer, bukan staff (staff harus login ulang)
+          const customerViews = ['customer-table-select', 'customer-menu', 'customer-cart', 'customer-checkout', 'customer-success'];
+          if (parsed.currentView && customerViews.includes(parsed.currentView)) {
+            state.currentView = parsed.currentView;
+          }
         }
       } catch (e) {
         console.warn('LocalStorage load failed:', e);
@@ -429,6 +441,7 @@
 
     function navigate(view) {
       state.currentView = view;
+      saveLocalState();
       render();
       window.scrollTo(0, 0);
     }
@@ -730,6 +743,51 @@
         .subscribe((status) => {
           console.log('Realtime subscription status:', status);
         });
+    }
+
+    // --- 7.12 Subscribe to a specific order (Customer tracking) ---
+    function subscribeToCustomerOrder(orderId) {
+      // Bersihkan channel lama kalau ada
+      if (customerOrderChannel) {
+        supabaseClient.removeChannel(customerOrderChannel);
+        customerOrderChannel = null;
+      }
+
+      if (!orderId) return;
+
+      customerOrderChannel = supabaseClient
+        .channel('customer-order-' + orderId)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'orders',
+            filter: `id=eq.${orderId}`,
+          },
+          (payload) => {
+            console.log('Customer order update:', payload);
+            if (payload.new) {
+              // Update lastOrderInfo dengan data terbaru dari DB
+              state.lastOrderInfo = { ...state.lastOrderInfo, ...payload.new };
+              saveLocalState();
+              // Hanya re-render kalau masih di halaman success
+              if (state.currentView === 'customer-success') {
+                render();
+              }
+            }
+          }
+        )
+        .subscribe((status) => {
+          console.log('Customer order subscription status:', status);
+        });
+    }
+
+    function unsubscribeCustomerOrder() {
+      if (customerOrderChannel) {
+        supabaseClient.removeChannel(customerOrderChannel);
+        customerOrderChannel = null;
+      }
     }
 
     // ============================================================
@@ -2102,6 +2160,8 @@
           state.splitParticipants = [];
           state.splitCount = 2;
           saveLocalState();
+          // Mulai tracking realtime untuk order ini
+          subscribeToCustomerOrder(order.id);
           showToast('Pesanan berhasil dibuat! 🎉', 'success');
           navigate('customer-success');
         } else {
@@ -2112,8 +2172,11 @@
       // -- ORDER AGAIN --
       const btnOrderAgain = document.getElementById('btn-order-again');
       if (btnOrderAgain) btnOrderAgain.addEventListener('click', () => {
+        unsubscribeCustomerOrder();
         state.cart = [];
         state.menuFilter = 'Semua';
+        state.lastOrderInfo = null;
+        saveLocalState();
         navigate('customer-menu');
       });
 
@@ -2410,7 +2473,26 @@
     // ============================================================
 
     loadLocalState();
-    render();
+
+    // Kalau restore ke halaman customer-success, ambil status order terbaru dari DB
+    // dan reconnect realtime subscription
+    if (state.currentView === 'customer-success' && state.lastOrderInfo && state.lastOrderInfo.id) {
+      (async () => {
+        const { data, error } = await supabaseClient
+          .from('orders')
+          .select('*')
+          .eq('id', state.lastOrderInfo.id)
+          .single();
+        if (data && !error) {
+          state.lastOrderInfo = data;
+          saveLocalState();
+        }
+        subscribeToCustomerOrder(state.lastOrderInfo.id);
+        render();
+      })();
+    } else {
+      render();
+    }
   </script>
 </body>
 </html>
