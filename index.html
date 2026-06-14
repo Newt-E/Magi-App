@@ -352,7 +352,17 @@
         const saved = localStorage.getItem('magi_state');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (parsed.cart) state.cart = parsed.cart;
+          if (parsed.cart && Array.isArray(parsed.cart)) {
+            // Validasi item cart agar format data lama tidak membuat crash
+            state.cart = parsed.cart.filter(item => 
+              item && 
+              item.menuItem && 
+              typeof item.menuItem === 'object' &&
+              item.menuItem.id && 
+              typeof item.menuItem.price === 'number' &&
+              typeof item.quantity === 'number'
+            );
+          }
           if (parsed.selectedTable) state.selectedTable = parsed.selectedTable;
           if (parsed.customerNote) state.customerNote = parsed.customerNote;
           if (parsed.selectedAccess) state.selectedAccess = parsed.selectedAccess;
